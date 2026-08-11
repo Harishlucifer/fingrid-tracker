@@ -1,35 +1,12 @@
-
 pipelines:
   branches:
     main:
       - step:
           name: Sync GitHub Mirror
           image: node:20.5.0
-
+          clone:
+            enabled: false
           script:
-            # Configure GitHub SSH key
-            - mkdir -p ~/.ssh
-            - echo "$GITHUB_SSH_KEY" | base64 -d > ~/.ssh/github_mirror_key
-            - chmod 600 ~/.ssh/github_mirror_key
-
-            # SSH configuration
-            - |
-              cat > ~/.ssh/config <<EOF
-              Host github.com
-                HostName github.com
-                User git
-                IdentityFile ~/.ssh/github_mirror_key
-                IdentitiesOnly yes
-              EOF
-
-            - chmod 600 ~/.ssh/config
-
-            # GitHub host verification
-            - ssh-keyscan github.com >> ~/.ssh/known_hosts
-
-            # Verify GitHub SSH authentication
-            - ssh -T git@github.com || true
-
-            # Push current Bitbucket repository to GitHub
-            - git remote add github git@github.com:Harishlucifer/fingrid-tracker.git
-            - git push github main
+            - git clone --bare git@bitbucket.org:sreedhar_ramasamy/fingrid-tracker.git
+            - cd fingrid-tracker.git
+            - git push --mirror git@github.com:Harishlucifer/fingrid-tracker.git
