@@ -13,6 +13,26 @@ import { defineConfig } from "prisma/config";
 
 import { databaseUrlFromEnv } from "./src/lib/database-config";
 
+/**
+ * The datasource is optional in Prisma 7 — only migrate/studio/seed need it, and
+ * `prisma generate` does not. A build machine (Vercel) runs `prisma generate`
+ * with no database in sight, so a missing DB_* variable must not be fatal there:
+ * it is reported and the datasource is omitted, which still fails loudly — with
+ * this warning right above it — if a migration command is what was being run.
+ */
+function cliDatasource() {
+  try {
+    return { url: databaseUrlFromEnv() };
+  } catch (error) {
+    console.warn(
+      `prisma.config.ts: no datasource URL — ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return undefined;
+  }
+}
+
 export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
@@ -21,7 +41,5 @@ export default defineConfig({
     // the deprecated `prisma.seed` key in package.json.
     seed: "tsx prisma/seed.ts",
   },
-  datasource: {
-    url: databaseUrlFromEnv(),
-  },
+  datasource: cliDatasource(),
 });

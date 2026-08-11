@@ -98,6 +98,15 @@ Conventions carried from `../craft-apex` and `../fingrid-fas`:
     does not resolve the `@/` tsconfig alias.
 - Seed command lives in `prisma.config.ts` (`migrations.seed`), not the
   deprecated `prisma.seed` key in package.json.
+- `src/generated/prisma` is gitignored and Prisma 7 does **not** generate on
+  install, so `prisma generate` runs from both `postinstall` and `build` — drop
+  either one and a clean checkout (or a CI/Vercel container) fails with
+  `Can't resolve '@/generated/prisma/client'`. Generation needs no database:
+  `prisma.config.ts` warns and omits the datasource when `DB_*` is absent,
+  because only migrate/studio/seed require a URL.
+- The build still needs `DB_NAME` (and friends) present, though: `prisma.ts`
+  builds the client at module scope, and `next build` evaluates every route
+  module while collecting page data.
 
 ## Notifications are an outbox, not fire-and-forget
 
