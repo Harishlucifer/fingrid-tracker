@@ -31,5 +31,5 @@ pipelines:
             - ssh -T git@github.com || true
 
             # Push current Bitbucket repository to GitHub
-            - git remote add github git@github.com:Harishlucifer/fingrid-apex.git
+            - git remote add github git@github.com:Harishlucifer/fingrid-tracker.git
             - git push github main
