@@ -9,15 +9,11 @@
  * constructing it touches nothing.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { createS3Storage } from "@/server/storage/s3";
 
 const ORIGINAL = { ...process.env };
-
-beforeEach(() => {
-  process.env.STORAGE_DRIVER = "s3";
-});
 
 afterEach(() => {
   process.env = { ...ORIGINAL };
@@ -26,7 +22,14 @@ afterEach(() => {
 describe("createS3Storage", () => {
   it("throws immediately when S3_BUCKET is missing", () => {
     delete process.env.S3_BUCKET;
-    expect(() => createS3Storage()).toThrow(/S3_BUCKET must be set/);
+    // Matches on the variable name, not the whole sentence — the wording is
+    // allowed to change, the named cause is not.
+    expect(() => createS3Storage()).toThrow(/S3_BUCKET/);
+  });
+
+  it("says there is no local fallback, so the cause is unambiguous", () => {
+    delete process.env.S3_BUCKET;
+    expect(() => createS3Storage()).toThrow(/no local fallback/i);
   });
 
   it("constructs with a bucket, without touching the network", () => {

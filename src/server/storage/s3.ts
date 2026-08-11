@@ -1,8 +1,5 @@
 /**
- * Amazon S3 storage driver.
- *
- * Implements the same three-method `Storage` interface as the local driver, so no
- * call site changes — `STORAGE_DRIVER=s3` is the whole switch.
+ * Amazon S3 storage driver — the only attachment store.
  *
  * Two deliberate choices:
  *
@@ -11,9 +8,11 @@
  *    owning project before a single byte moves. A presigned URL would be a bearer
  *    credential anyone could forward for its lifetime, and the objects stay
  *    private either way. Attachments are capped at 25 MB, so proxying is cheap.
- *  * **Credentials come from the SDK's default provider chain**, never from
- *    config — environment, shared profile, or the instance/task role. Production
- *    runs on an IAM role and no secret lands in `.env`.
+ *  * **Credentials are resolved once**, from `S3_ACCESS_KEY_ID` /
+ *    `S3_SECRET_ACCESS_KEY` if set, else the shared `AWS_*` pair, else the SDK's
+ *    default provider chain. A separate S3 key means the attachment credential
+ *    cannot send mail. An instance role is still better in production — a static
+ *    key in `.env` is a long-lived secret that has to be rotated by hand.
  *
  * The bucket itself must stay private: Block Public Access on, no public policy.
  * Nothing here grants public reads, and the download route is the only reader.
@@ -24,6 +23,7 @@ import type {
   S3Client,
 } from "@aws-sdk/client-s3";
 
+import { resolveAwsCredentials } from "@/lib/aws-credentials";
 import { env } from "@/lib/env";
 
 import { assertSafeKey, type PutResult, type Storage } from "./index";
@@ -34,7 +34,7 @@ export function createS3Storage(): Storage {
 
   if (!bucket) {
     throw new Error(
-      "S3_BUCKET must be set when STORAGE_DRIVER=s3. Failing at boot rather than on the first upload.",
+      "S3_BUCKET is not set. Attachments are stored in S3 only — there is no local fallback, so this must be a real private bucket.",
     );
   }
 
@@ -51,12 +51,20 @@ export function createS3Storage(): Storage {
   // Imported lazily and cached, so the SDK is never loaded under the local driver.
   let clientPromise: Promise<S3Client> | null = null;
 
+  // S3-specific key if provided, else the shared AWS one, else the instance role.
+  // Resolved eagerly so a half-configured pair throws when the driver is built,
+  // not on the first upload.
+  const credentials = resolveAwsCredentials("S3");
+
   async function getClient(): Promise<S3Client> {
     if (!clientPromise) {
       clientPromise = import("@aws-sdk/client-s3").then(
         ({ S3Client: Client }) =>
           new Client({
             region,
+            // Omitted entirely when unset, so the SDK's default provider chain
+            // takes over rather than being handed an empty credentials object.
+            ...(credentials ? { credentials } : {}),
             // Set only for S3-compatible endpoints (MinIO, LocalStack); unset for
             // real S3 so the SDK resolves the regional endpoint itself.
             ...(env.s3Endpoint

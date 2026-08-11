@@ -1,15 +1,13 @@
 /**
- * Attachment storage behind a three-method interface.
+ * Attachment storage. **Amazon S3 only** — there is no local-disk driver.
  *
- * Mirrors the factory pattern `alpha-api` uses for its external providers
- * (`app/factory/`): the driver is selected once from configuration, and callers
- * never know which one they got. Swapping to S3 is an env-var change plus one
- * new file — no call site moves.
+ * The interface is kept (rather than calling the SDK from the service layer)
+ * because it is what keeps the S3 specifics in one file: the service does
+ * `getStorage().put(...)` and knows nothing about buckets, encryption or
+ * credentials. It also leaves room for an S3-compatible endpoint via
+ * `S3_ENDPOINT` without touching a call site.
  */
 
-import { env } from "@/lib/env";
-
-import { createLocalStorage } from "./local";
 import { createS3Storage } from "./s3";
 
 export type PutResult = { key: string; size: number };
@@ -69,23 +67,22 @@ export function assertSafeKey(key: string): void {
 
 let cached: Storage | null = null;
 
+/**
+ * The S3 driver, constructed once.
+ *
+ * Throws if `S3_BUCKET` is unset. That happens the first time attachment storage
+ * is touched rather than at process start — env access is lazy, which is what
+ * keeps `next build` working without secrets present. The error names the missing
+ * variable, so a misconfigured deployment is obvious the first time anyone
+ * uploads, instead of writing bytes somewhere they will be lost.
+ */
 export function getStorage(): Storage {
   if (cached) return cached;
-
-  switch (env.storageDriver) {
-    case "s3":
-      // Throws at construction if S3_BUCKET is missing — a misconfigured server
-      // should fail at boot, not silently write attachments to local disk.
-      cached = createS3Storage();
-      return cached;
-    case "local":
-    default:
-      cached = createLocalStorage(env.storageLocalDir);
-      return cached;
-  }
+  cached = createS3Storage();
+  return cached;
 }
 
-/** Reset the memoized driver. Test-only; production selects a driver once. */
+/** Reset the memoized driver. Test-only; production constructs it once. */
 export function resetStorageForTests(): void {
   cached = null;
 }

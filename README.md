@@ -20,6 +20,23 @@ brew services start mysql
 mysql -u root -e "CREATE DATABASE inforvio_pm CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;"
 ```
 
+The connection is configured as **discrete values, not a URL** — the same names
+the Go services use, so a deployment's SSM parameters look consistent:
+
+```bash
+DB_HOST="127.0.0.1"     # default 127.0.0.1
+DB_PORT="3306"          # default 3306
+DB_USER="root"          # default root
+DB_PASS=""              # empty is valid on a fresh local MySQL
+DB_NAME="inforvio_pm"   # required — no default
+```
+
+Only `DB_NAME` is mandatory; silently defaulting *which database* is how you
+migrate the wrong schema. There is no `DATABASE_URL`: the runtime client hands
+these to the driver adapter as an object (so a password containing `@`, `:`, `/`
+or `#` needs no escaping), and `prisma.config.ts` composes a percent-encoded URL
+for the Prisma CLI, which only understands URLs.
+
 ### 2. Google OAuth client
 
 In [Google Cloud Console](https://console.cloud.google.com/apis/credentials):
@@ -56,27 +73,63 @@ The seed is not optional. The sign-in callback reads the `allowed_domain` table
 and nothing else, so an empty table refuses everyone — deliberately, because a
 config fallback in the sign-in path would be a way around the allowlist.
 
-## Attachment storage (Amazon S3)
+## AWS credentials
 
-Attachments go through a small `Storage` interface with two drivers. Local disk is
-the default so development needs no AWS account; `STORAGE_DRIVER=s3` switches to
-S3 and nothing else changes.
+S3 and SES resolve **separate** credentials, so each can be a least-privilege IAM
+user — an attachment key that cannot send mail, and a mail key that cannot read
+the bucket. Resolution happens in
+[src/lib/aws-credentials.ts](src/lib/aws-credentials.ts).
 
 ```bash
-STORAGE_DRIVER="s3"
-S3_BUCKET="inforvio-pm-attachments"     # must be PRIVATE
+S3_ACCESS_KEY_ID="AKIA..."       # needs only s3:{Put,Get,Delete}Object
+S3_SECRET_ACCESS_KEY="..."
+
+SES_ACCESS_KEY_ID="AKIA..."      # needs only ses:SendEmail
+SES_SECRET_ACCESS_KEY="..."
+```
+
+Per service, first match wins:
+
+1. `<SERVICE>_ACCESS_KEY_ID` + `<SERVICE>_SECRET_ACCESS_KEY` — the separate key.
+2. `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` — a shared key, if one IAM user
+   is fine for both.
+3. Neither — the SDK's default provider chain (shared profile, or an EC2/ECS
+   instance role).
+
+**A half-configured pair is a hard error, at every level.** A mistyped
+`SES_SECRET_ACCESS_KEY` must not silently drop to the shared key, or to an
+instance role in another account — that is how mail starts sending from an
+identity nobody intended. The error names the missing variable.
+
+| Permission | Key |
+|---|---|
+| `s3:PutObject`, `s3:GetObject`, `s3:DeleteObject` on `arn:aws:s3:::<bucket>/*` | `S3_*` |
+| `ses:SendEmail` | `SES_*` |
+
+Static keys are long-lived secrets you rotate by hand. `.env` is gitignored —
+keep it that way, and prefer an instance role in production, where there is
+nothing to rotate and nothing to leak.
+
+## Attachment storage (Amazon S3)
+
+**S3 is the only attachment store — there is no local-disk fallback.** Attachment
+upload and download therefore need AWS credentials and a bucket, including in
+development. Everything else in the app runs without AWS.
+
+```bash
+S3_BUCKET="inforvio-pm-attachments"     # required, must be PRIVATE
 S3_REGION="ap-south-1"
 # S3_PREFIX="production"                # optional, share one bucket per env
 # S3_KMS_KEY_ID="..."                   # optional, SSE-KMS instead of SSE-S3
+# S3_ENDPOINT="..."                     # optional, MinIO/LocalStack only
 ```
 
 Setup:
 
 1. **Create a private bucket.** Block Public Access on, no public policy. The app
    never grants public reads.
-2. **Grant the app's role** `s3:PutObject`, `s3:GetObject` and `s3:DeleteObject`
-   on `arn:aws:s3:::<bucket>/*`. Credentials come from the SDK's default provider
-   chain (environment, shared profile, or instance/task role) — none go in `.env`.
+2. **Grant** `s3:PutObject`, `s3:GetObject` and `s3:DeleteObject` on
+   `arn:aws:s3:::<bucket>/*` to the `S3_*` key. It needs nothing else.
 3. **Optionally set a lifecycle rule** to expire old versions, and enable
    versioning if you want deleted attachments recoverable.
 
@@ -89,8 +142,11 @@ credential anyone could forward for its lifetime. With a 25 MB cap, proxying is
 cheap. If you later need presigned URLs for much larger files, add a fourth
 method to the interface rather than loosening the download route.
 
-Missing `S3_BUCKET` makes the app fail at **boot**, not on the first upload — a
-misconfigured server should not silently write attachments to local disk.
+Missing `S3_BUCKET` raises a named error the first time attachment storage is
+touched. Env access is lazy so that `next build` works without secrets present,
+which means the failure surfaces on the first upload rather than at process
+start — but it names the missing variable, and there is no fallback that could
+quietly put bytes somewhere they would be lost.
 
 ## Email notifications (Amazon SES)
 
@@ -109,9 +165,8 @@ server console.
 2. **Leave the sandbox.** A new SES account can only send *to* verified
    addresses. Request production access, or every teammate's address has to be
    verified individually first. This is the step people miss.
-3. **Grant `ses:SendEmail`** to the role the app runs as. Credentials are read by
-   the AWS SDK's default provider chain — environment, shared profile, or
-   instance/task role — so no secret goes in `.env`.
+3. **Grant `ses:SendEmail`** to the `SES_*` key. It needs nothing else — and in
+   particular no access to the attachment bucket.
 4. **Optional but recommended:** create a configuration set with an SNS
    destination for bounces and complaints, and set `SES_CONFIGURATION_SET`.
    Without it, repeated bounces quietly damage your sending reputation.

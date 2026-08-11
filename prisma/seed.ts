@@ -17,13 +17,11 @@ import "dotenv/config";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 
 import { PrismaClient } from "../src/generated/prisma/client";
+import {
+  databaseConfigFromEnv,
+  describeDatabase,
+} from "../src/lib/database-config";
 import { canonicalizeDomain } from "../src/server/auth/domain";
-
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`${name} is not set — cannot seed.`);
-  return value;
-}
 
 function parseList(name: string): string[] {
   return (process.env[name] ?? "")
@@ -33,7 +31,18 @@ function parseList(name: string): string[] {
 }
 
 async function main() {
-  const adapter = new PrismaMariaDb(requireEnv("DATABASE_URL"));
+  // Same config object the app uses, so the seed can never end up pointed at a
+  // different database than the running server.
+  const config = databaseConfigFromEnv();
+  console.log(`[seed] ${describeDatabase(config)}`);
+
+  const adapter = new PrismaMariaDb({
+    host: config.host,
+    port: config.port,
+    user: config.user,
+    password: config.password,
+    database: config.database,
+  });
   const prisma = new PrismaClient({ adapter });
 
   try {

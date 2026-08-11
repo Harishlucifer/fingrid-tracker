@@ -2,14 +2,15 @@
  * Typed environment access.
  *
  * Follows the house pattern from `craft-apex/apps/employee-portal/src/env.ts`
- * and `fingrid-fas/src/config/config.go`: one module owns process.env, nothing
- * else reads it directly, and a missing required value produces a clear error
- * rather than an undefined at the first request.
+ * and `fingrid-fas/src/config/config.go`: one module owns process.env and
+ * nothing else reads it directly.
  *
- * Required values are exposed as **lazy getters**, deliberately. A module-scope
- * throw would break `next build`, which imports every route to collect page
- * data and does so without production secrets present. Reading the value is what
- * fails, at the moment it is actually needed.
+ * Every value here is optional-with-a-default, and everything read as a **lazy
+ * getter** — deliberately. A module-scope throw would break `next build`, which
+ * imports every route to collect page data without production secrets present.
+ * Where a value genuinely has no safe default, the consumer raises a named error
+ * at the point of use instead: `S3_BUCKET` in `src/server/storage/s3.ts`,
+ * `DB_NAME` in `src/lib/database-config.ts`.
  *
  * Auth.js reads `AUTH_SECRET`, `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET` from the
  * environment itself, so they are intentionally absent here — duplicating the
@@ -17,16 +18,6 @@
  *
  * Server-only. Never import from a client component.
  */
-
-function required(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(
-      `${name} is not set. Copy .env.example to .env and fill it in.`,
-    );
-  }
-  return value;
-}
 
 function optional(name: string): string | undefined {
   return process.env[name] || undefined;
@@ -58,10 +49,12 @@ export const env = {
     return process.env.NODE_ENV === "production";
   },
 
-  /** Required — throws on read if unset. */
-  get databaseUrl() {
-    return required("DATABASE_URL");
-  },
+  /**
+   * The database connection is deliberately NOT here. It is assembled from
+   * DB_HOST / DB_PORT / DB_USER / DB_PASS / DB_NAME by `@/lib/database-config`,
+   * which both the app and `prisma.config.ts` import — the CLI can read it that
+   * way without loading this module (and its Google/SES getters).
+   */
 
   /**
    * Optional Google `hd` hint. Pre-filters the account chooser to one Workspace
@@ -77,17 +70,16 @@ export const env = {
     return list("BOOTSTRAP_ADMIN_EMAILS").map((email) => email.toLowerCase());
   },
 
-  get storageDriver() {
-    return (optional("STORAGE_DRIVER") ?? "local") as "local" | "s3";
-  },
-  get storageLocalDir() {
-    return optional("STORAGE_LOCAL_DIR") ?? "./var/uploads";
-  },
   get maxUploadBytes() {
     return int("MAX_UPLOAD_BYTES", 25 * 1024 * 1024);
   },
 
-  /** Required when STORAGE_DRIVER=s3. Must be a PRIVATE bucket. */
+  /**
+   * Required — S3 is the only attachment store. Must be a PRIVATE bucket.
+   * Still read through `optional()` so `next build`, which imports every route
+   * without secrets present, does not throw; the S3 driver raises a named error
+   * when it is actually missing.
+   */
   get s3Bucket() {
     return optional("S3_BUCKET");
   },

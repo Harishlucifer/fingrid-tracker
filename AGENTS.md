@@ -86,9 +86,16 @@ Conventions carried from `../craft-apex` and `../fingrid-fas`:
 
 - Generator is `prisma-client` (not `prisma-client-js`), output
   `src/generated/prisma` — import from `@/generated/prisma/client`.
-- `schema.prisma` has **no** datasource `url`. The CLI reads it from
-  `prisma.config.ts`; the runtime client gets it via the
-  `@prisma/adapter-mariadb` driver adapter in `src/server/db/prisma.ts`.
+- `schema.prisma` has **no** datasource `url`. The connection is assembled from
+  the discrete `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_PASS` / `DB_NAME`
+  variables by `src/lib/database-config.ts` — there is no `DATABASE_URL`.
+  - The **runtime** client passes a config *object* to the
+    `@prisma/adapter-mariadb` driver adapter, so a password containing `@`, `:`,
+    `/` or `#` needs no escaping.
+  - The **CLI** only understands a URL, so `prisma.config.ts` composes one with
+    `buildMysqlUrl()`, which percent-encodes user and password.
+  - `prisma.config.ts` imports that helper by **relative** path — the Prisma CLI
+    does not resolve the `@/` tsconfig alias.
 - Seed command lives in `prisma.config.ts` (`migrations.seed`), not the
   deprecated `prisma.seed` key in package.json.
 
@@ -117,7 +124,7 @@ the attempt ceiling — the thing to call after fixing SES configuration.
 **Pure logic must not sit behind a Prisma import.** This bit me three times
 (`mentions.ts`, `month.ts`, `rules.ts`): a module that imports
 `@/server/db/prisma` cannot be unit-tested, because the client is constructed at
-module scope and needs `DATABASE_URL`. Keep predicates and formatting in `lib/`
+module scope and needs the `DB_*` variables. Keep predicates and formatting in `lib/`
 or a prisma-free module.
 
 ## Gotchas
@@ -126,8 +133,9 @@ or a prisma-free module.
   throw breaks `next build`, which imports every route without secrets present.
 - The Google provider does **not** receive `clientId`/`clientSecret` — Auth.js
   reads `AUTH_GOOGLE_ID`/`AUTH_GOOGLE_SECRET` itself, for the same build reason.
-- Attachments live in `var/uploads` (gitignored), **never `public/`** — anything
-  in `public/` is served unauthenticated. The only read path is
+- Attachments live in a **private S3 bucket only** — there is no local-disk
+  driver, so `S3_BUCKET` is required for uploads to work at all. Nothing is ever
+  written to `public/`, and no presigned URLs are issued: the only read path is
   `GET /api/v1/attachments/:id/download`, which authorizes first.
 - Board `position` is gap-spaced integers with midpoint inserts; when a gap
   closes the column is rebalanced in the same transaction
@@ -137,3 +145,13 @@ or a prisma-free module.
   `uq_task_project_number`.
 - `next-auth` is pinned to an exact beta. Do not float it; betas have shipped
   breaking config changes.
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

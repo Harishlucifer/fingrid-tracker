@@ -42,9 +42,5 @@ next-env.d.ts
 
 /src/generated/prisma
 
-# Local attachment storage (STORAGE_DRIVER=local). Deliberately outside
-# public/, so files are only reachable through the authorized download route.
-/var/uploads
-
 # .env is ignored above, but the template must stay committed.
 !.env.example

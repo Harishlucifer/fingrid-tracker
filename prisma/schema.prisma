@@ -22,9 +22,11 @@ generator client {
   output   = "../src/generated/prisma"
 }
 
-// Prisma 7 no longer accepts `url` here. The CLI reads the connection string
-// from `prisma.config.ts` (which loads DATABASE_URL from .env), and the runtime
-// client gets it through a driver adapter — see src/server/db/prisma.ts.
+// Prisma 7 no longer accepts `url` here. The connection is assembled from the
+// discrete DB_HOST / DB_PORT / DB_USER / DB_PASS / DB_NAME variables by
+// `src/lib/database-config.ts`: the CLI gets a composed URL via
+// `prisma.config.ts`, and the runtime client gets a config OBJECT through the
+// driver adapter — see `src/server/db/prisma.ts`.
 datasource db {
   provider = "mysql"
 }

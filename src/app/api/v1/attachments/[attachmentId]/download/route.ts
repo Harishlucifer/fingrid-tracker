@@ -1,9 +1,10 @@
 /**
  * Authorized attachment download.
  *
- * This route is the ONLY way to read an attachment: files live in
- * STORAGE_LOCAL_DIR, outside public/, so there is no unauthenticated path to
- * them. Access is checked before any byte is streamed.
+ * This route is the ONLY way to read an attachment: objects live in a private S3
+ * bucket with no public policy, and the app hands out no presigned URLs — so
+ * there is no path to the bytes that skips this check. Access is verified before
+ * a single byte is streamed.
  */
 
 import { NextResponse } from "next/server";

@@ -9,6 +9,7 @@
  * `app/factory/`, so swapping provider never touches a call site.
  */
 
+import { resolveAwsCredentials } from "@/lib/aws-credentials";
 import { env } from "@/lib/env";
 
 export type OutboundEmail = {
@@ -57,10 +58,10 @@ function createLogMailer(): Mailer {
 /**
  * Amazon SES v2.
  *
- * Credentials are NOT read from config: the SDK's default provider chain picks
- * them up from the environment, the shared profile, or the instance/task role.
- * That means production runs on an IAM role with `ses:SendEmail` and no secret
- * ever lands in the app's configuration.
+ * Credentials come from `SES_ACCESS_KEY_ID` / `SES_SECRET_ACCESS_KEY` if set,
+ * else the shared `AWS_*` pair, else the SDK's default provider chain. Keeping a
+ * separate SES key means the mail credential needs only `ses:SendEmail` and
+ * cannot read the attachment bucket.
  */
 function createSesMailer(): Mailer {
   const region = env.sesRegion;
@@ -72,6 +73,8 @@ function createSesMailer(): Mailer {
     );
   }
 
+  const credentials = resolveAwsCredentials("SES");
+
   // Imported lazily so the SDK is not loaded (or required) under MAIL_DRIVER=log.
   let clientPromise: Promise<import("@aws-sdk/client-sesv2").SESv2Client> | null =
     null;
@@ -79,7 +82,12 @@ function createSesMailer(): Mailer {
   async function getClient() {
     if (!clientPromise) {
       clientPromise = import("@aws-sdk/client-sesv2").then(
-        ({ SESv2Client }) => new SESv2Client({ region }),
+        ({ SESv2Client }) =>
+          new SESv2Client({
+            region,
+            // Omitted when unset so the default provider chain applies.
+            ...(credentials ? { credentials } : {}),
+          }),
       );
     }
     return clientPromise;
