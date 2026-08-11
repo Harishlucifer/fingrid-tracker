@@ -1,0 +1,490 @@
+// Inforvio Project Management — data model
+//
+// House conventions carried over from `fingrid-fas/src/database/entities.go` and
+// `fingrid-sdd/skills/04-db-schema/SKILL.md`:
+//
+//   * App-generated UUIDv4 `char(36)` primary keys.
+//   * `created_at` / `updated_at` on every table.
+//   * Soft delete via `deleted_at`; rows with it set are never returned by the API.
+//   * NO MySQL ENUM types. Status/role/priority are `VarChar(32)` and the allowed
+//     values are enforced in the app layer — see `src/lib/constants.ts`.
+//   * Indexes exist only where declared, and composite keys are explicitly named
+//     (`uq_*` for uniques, `ix_*` for plain indexes).
+//
+// Two tables deliberately opt out of `deleted_at` — `AllowedDomain` and
+// `ProjectMember`. Both carry a unique key that a soft-deleted row would block
+// forever (MySQL allows many NULLs in a unique index, so `(key, deleted_at)`
+// cannot express "one active row per key" either). They use `is_active` /
+// hard-delete instead, and `ActivityLog` preserves the history.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+// Prisma 7 no longer accepts `url` here. The CLI reads the connection string
+// from `prisma.config.ts` (which loads DATABASE_URL from .env), and the runtime
+// client gets it through a driver adapter — see src/server/db/prisma.ts.
+datasource db {
+  provider = "mysql"
+}
+
+// ---------------------------------------------------------------------------
+// Auth.js (NextAuth v5) adapter tables
+//
+// Field NAMES here are dictated by @auth/prisma-adapter and must not be
+// renamed — only the underlying columns are mapped to snake_case. The
+// snake_case `refresh_token` / `access_token` / `id_token` fields are the
+// adapter's own naming (they mirror the OAuth response) and need `@db.Text`
+// because Google's tokens overflow MySQL's default index-safe varchar length.
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String    @id @default(uuid(4)) @db.Char(36)
+  name          String?   @db.VarChar(255)
+  email         String    @unique(map: "uq_user_email") @db.VarChar(320)
+  emailVerified DateTime? @map("email_verified")
+  image         String?   @db.VarChar(1024)
+
+  // Org-level authorization. ADMIN | MEMBER | VIEWER (see ORG_ROLES).
+  role        String    @default("MEMBER") @db.VarChar(32)
+  isActive    Boolean   @default(true) @map("is_active")
+  lastLoginAt DateTime? @map("last_login_at")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  accounts Account[]
+  sessions Session[]
+
+  projectMemberships ProjectMember[]
+  ownedProjects      Project[]       @relation("ProjectOwner")
+  assignedTasks      Task[]          @relation("TaskAssignee")
+  reportedTasks      Task[]          @relation("TaskReporter")
+  comments           Comment[]
+  mentions           Mention[]       @relation("MentionedUser")
+  attachments        Attachment[]
+  activityLogs       ActivityLog[]
+  timeLogs           TimeLog[]
+  notifications      Notification[]  @relation("NotificationRecipient")
+  triggeredNotifications Notification[] @relation("NotificationActor")
+
+  @@index([isActive], map: "ix_user_is_active")
+  @@map("user")
+}
+
+model Account {
+  id                String  @id @default(uuid(4)) @db.Char(36)
+  userId            String  @map("user_id") @db.Char(36)
+  type              String  @db.VarChar(32)
+  provider          String  @db.VarChar(64)
+  providerAccountId String  @map("provider_account_id") @db.VarChar(255)
+  refresh_token     String? @map("refresh_token") @db.Text
+  access_token      String? @map("access_token") @db.Text
+  expires_at        Int?    @map("expires_at")
+  token_type        String? @map("token_type") @db.VarChar(64)
+  scope             String? @db.VarChar(1024)
+  id_token          String? @map("id_token") @db.Text
+  session_state     String? @map("session_state") @db.VarChar(255)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId], map: "uq_account_provider")
+  @@index([userId], map: "ix_account_user")
+  @@map("account")
+}
+
+// Database-backed sessions (strategy: "database"). Deleting rows here is how an
+// admin cuts a live session immediately — the reason we chose DB sessions over a
+// stateless JWT cookie. Mirrors `alpha-api`'s `core_user_token.revoked`.
+model Session {
+  id           String   @id @default(uuid(4)) @db.Char(36)
+  sessionToken String   @unique(map: "uq_session_token") @map("session_token") @db.VarChar(255)
+  userId       String   @map("user_id") @db.Char(36)
+  expires      DateTime
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "ix_session_user")
+  @@map("session")
+}
+
+// Required by the adapter's type contract. Unused with a Google-only provider.
+model VerificationToken {
+  identifier String   @db.VarChar(320)
+  token      String   @db.VarChar(255)
+  expires    DateTime
+
+  @@unique([identifier, token], map: "uq_verification_token")
+  @@map("verification_token")
+}
+
+// ---------------------------------------------------------------------------
+// Access control — the domain allowlist
+//
+// This is the table the admin Settings UI manages. The sign-in callback checks
+// it on EVERY sign-in and denies by default; an empty table locks everyone out
+// on purpose (there is no runtime env fallback, because a fallback is a bypass).
+// `prisma/seed.ts` seeds the first row from BOOTSTRAP_ALLOWED_DOMAINS.
+//
+// `domain` is always stored canonicalized (lowercased, scheme/path/port
+// stripped) by `canonicalizeDomain()` — both sides of every comparison run
+// through it, per `alpha-api/app/models/tenant/domain.go`.
+// Matching is EXACT: a row for `inforvio.com` does not admit
+// `mail.inforvio.com`. Implicit suffix matching is a classic allowlist bypass.
+// ---------------------------------------------------------------------------
+
+model AllowedDomain {
+  id       String  @id @default(uuid(4)) @db.Char(36)
+  domain   String  @unique(map: "uq_allowed_domain") @db.VarChar(253)
+  // Role granted to users who first sign in via this domain.
+  autoRole String  @default("MEMBER") @map("auto_role") @db.VarChar(32)
+  isActive Boolean @default(true) @map("is_active")
+  note     String? @db.VarChar(500)
+
+  createdById String? @map("created_by_id") @db.Char(36)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([isActive], map: "ix_allowed_domain_is_active")
+  @@map("allowed_domain")
+}
+
+// ---------------------------------------------------------------------------
+// Projects
+// ---------------------------------------------------------------------------
+
+model Project {
+  id          String  @id @default(uuid(4)) @db.Char(36)
+  // Short human key used to build task numbers, e.g. "PMT" -> PMT-42.
+  key         String  @unique(map: "uq_project_key") @db.VarChar(16)
+  name        String  @db.VarChar(255)
+  description String? @db.Text
+  // ACTIVE | ARCHIVED | ON_HOLD
+  status      String  @default("ACTIVE") @db.VarChar(32)
+  color       String? @db.VarChar(16)
+
+  ownerId String @map("owner_id") @db.Char(36)
+
+  // Monotonic counter behind Task.number. Incremented inside the same
+  // transaction as the task insert, or concurrent creates collide on
+  // uq_task_project_number.
+  taskSeq Int @default(0) @map("task_seq")
+
+  startDate DateTime? @map("start_date")
+  endDate   DateTime? @map("end_date")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  owner        User            @relation("ProjectOwner", fields: [ownerId], references: [id])
+  members      ProjectMember[]
+  statuses     TaskStatus[]
+  tasks        Task[]
+  sprints      Sprint[]
+  activityLogs ActivityLog[]
+
+  @@index([status, deletedAt], map: "ix_project_status")
+  @@map("project")
+}
+
+model ProjectMember {
+  id        String @id @default(uuid(4)) @db.Char(36)
+  projectId String @map("project_id") @db.Char(36)
+  userId    String @map("user_id") @db.Char(36)
+  // Project-level role: LEAD | MEMBER | VIEWER. Intersected with the org role;
+  // the narrower of the two always wins (see src/lib/permissions.ts).
+  role      String @default("MEMBER") @db.VarChar(32)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId], map: "uq_project_member")
+  @@index([userId], map: "ix_project_member_user")
+  @@map("project_member")
+}
+
+// Board columns, per project. `category` is what gives them meaning: a task
+// moved into a DONE-category column gets `completed_at` stamped, which is what
+// the burndown and throughput reports read.
+model TaskStatus {
+  id        String  @id @default(uuid(4)) @db.Char(36)
+  projectId String  @map("project_id") @db.Char(36)
+  name      String  @db.VarChar(64)
+  // TODO | IN_PROGRESS | DONE
+  category  String  @default("TODO") @db.VarChar(32)
+  position  Int
+  color     String? @db.VarChar(16)
+  wipLimit  Int?    @map("wip_limit")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tasks   Task[]
+
+  @@unique([projectId, name], map: "uq_task_status_name")
+  @@index([projectId, position], map: "ix_task_status_order")
+  @@map("task_status")
+}
+
+// ---------------------------------------------------------------------------
+// Tasks
+// ---------------------------------------------------------------------------
+
+model Task {
+  id          String  @id @default(uuid(4)) @db.Char(36)
+  projectId   String  @map("project_id") @db.Char(36)
+  statusId    String  @map("status_id") @db.Char(36)
+  sprintId    String? @map("sprint_id") @db.Char(36)
+  // Per-project sequence, rendered as "<project.key>-<number>".
+  number      Int
+  title       String  @db.VarChar(500)
+  description String? @db.Text
+  // LOW | MEDIUM | HIGH | URGENT
+  priority    String  @default("MEDIUM") @db.VarChar(32)
+
+  assigneeId String? @map("assignee_id") @db.Char(36)
+  reporterId String  @map("reporter_id") @db.Char(36)
+
+  dueDate     DateTime? @map("due_date")
+  estimateMin Int?      @map("estimate_minutes")
+
+  // Board ordering within a column. Gap-spaced by BOARD_POSITION_GAP and
+  // midpoint-inserted on drop; the service rebalances the column when a gap
+  // closes to less than 2. See src/lib/board-position.ts.
+  position Int
+
+  // Stamped when the task enters a DONE-category column, cleared when it leaves.
+  // Reports derive from this rather than from a snapshot table.
+  completedAt DateTime? @map("completed_at")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  status      TaskStatus   @relation(fields: [statusId], references: [id])
+  sprint      Sprint?      @relation(fields: [sprintId], references: [id], onDelete: SetNull)
+  assignee    User?        @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  reporter    User         @relation("TaskReporter", fields: [reporterId], references: [id])
+  comments    Comment[]
+  attachments Attachment[]
+  timeLogs    TimeLog[]
+
+  @@unique([projectId, number], map: "uq_task_project_number")
+  @@index([projectId, statusId, position], map: "ix_task_board")
+  @@index([assigneeId, completedAt], map: "ix_task_assignee")
+  @@index([sprintId], map: "ix_task_sprint")
+  @@index([projectId, deletedAt], map: "ix_task_project_live")
+  @@map("task")
+}
+
+// ---------------------------------------------------------------------------
+// Collaboration
+// ---------------------------------------------------------------------------
+
+model Comment {
+  id       String  @id @default(uuid(4)) @db.Char(36)
+  taskId   String  @map("task_id") @db.Char(36)
+  authorId String  @map("author_id") @db.Char(36)
+  body     String  @db.Text
+  // Set for replies — one level of threading is what the UI renders.
+  parentId String? @map("parent_id") @db.Char(36)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  task     Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  author   User      @relation(fields: [authorId], references: [id])
+  parent   Comment?  @relation("CommentThread", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  replies  Comment[] @relation("CommentThread")
+  mentions Mention[]
+
+  @@index([taskId, createdAt], map: "ix_comment_task")
+  @@index([parentId], map: "ix_comment_parent")
+  @@map("comment")
+}
+
+// An explicit row per @mention so "mentions of me" is an index lookup rather
+// than a LIKE scan over comment bodies.
+model Mention {
+  id              String @id @default(uuid(4)) @db.Char(36)
+  commentId       String @map("comment_id") @db.Char(36)
+  mentionedUserId String @map("mentioned_user_id") @db.Char(36)
+
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  comment       Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  mentionedUser User    @relation("MentionedUser", fields: [mentionedUserId], references: [id], onDelete: Cascade)
+
+  @@unique([commentId, mentionedUserId], map: "uq_mention")
+  @@index([mentionedUserId, readAt], map: "ix_mention_user_unread")
+  @@map("mention")
+}
+
+model Attachment {
+  id         String @id @default(uuid(4)) @db.Char(36)
+  taskId     String @map("task_id") @db.Char(36)
+  uploaderId String @map("uploader_id") @db.Char(36)
+
+  // Opaque storage key, e.g. projects/<id>/tasks/<id>/<uuid>.png. Never a
+  // client-supplied path — see src/server/storage/.
+  storageKey String @unique(map: "uq_attachment_storage_key") @map("storage_key") @db.VarChar(512)
+  fileName   String @map("file_name") @db.VarChar(255)
+  mimeType   String @map("mime_type") @db.VarChar(255)
+  sizeBytes  Int    @map("size_bytes")
+  checksum   String? @db.VarChar(64)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  task     Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  uploader User @relation(fields: [uploaderId], references: [id])
+
+  @@index([taskId, deletedAt], map: "ix_attachment_task")
+  @@map("attachment")
+}
+
+// Append-only audit trail. Written in the service layer so every mutation path
+// records uniformly; never written from a route handler.
+model ActivityLog {
+  id         String @id @default(uuid(4)) @db.Char(36)
+  // PROJECT | TASK | COMMENT | ATTACHMENT | SPRINT | TIME_LOG | ALLOWED_DOMAIN | USER
+  entityType String @map("entity_type") @db.VarChar(32)
+  entityId   String @map("entity_id") @db.Char(36)
+  // Null for org-level events such as allowlist changes.
+  projectId  String? @map("project_id") @db.Char(36)
+  actorId    String  @map("actor_id") @db.Char(36)
+  // e.g. task.created, task.status_changed, allowed_domain.deactivated
+  action     String  @db.VarChar(64)
+  // Before/after diff or event detail.
+  payload    Json?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  actor   User     @relation(fields: [actorId], references: [id])
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt], map: "ix_activity_project")
+  @@index([entityType, entityId, createdAt], map: "ix_activity_entity")
+  @@index([actorId, createdAt], map: "ix_activity_actor")
+  @@map("activity_log")
+}
+
+// ---------------------------------------------------------------------------
+// Planning and time
+// ---------------------------------------------------------------------------
+
+model Sprint {
+  id        String  @id @default(uuid(4)) @db.Char(36)
+  projectId String  @map("project_id") @db.Char(36)
+  name      String  @db.VarChar(255)
+  goal      String? @db.Text
+  // PLANNED | ACTIVE | COMPLETED
+  status    String  @default("PLANNED") @db.VarChar(32)
+
+  startDate DateTime @map("start_date")
+  endDate   DateTime @map("end_date")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tasks   Task[]
+
+  @@unique([projectId, name], map: "uq_sprint_name")
+  @@index([projectId, status], map: "ix_sprint_project_status")
+  @@map("sprint")
+}
+
+// ---------------------------------------------------------------------------
+// Notifications
+//
+// An OUTBOX, not a log. A row is written inside the same transaction as the
+// change that caused it, so a notification can never be lost because email was
+// down — and email is never sent for a change that was rolled back. Delivery
+// happens after the HTTP response (Next's `after()`), and a failed attempt
+// leaves the row PENDING with its error for a later retry.
+//
+// The rendered subject/body are stored rather than re-derived at send time: the
+// email should describe the event as it happened, not the current state of a
+// task that may have changed again since.
+// ---------------------------------------------------------------------------
+
+model Notification {
+  id String @id @default(uuid(4)) @db.Char(36)
+
+  /// Recipient.
+  userId String @map("user_id") @db.Char(36)
+  /// Who caused it. Never equal to userId — nobody is emailed about their own action.
+  actorId String @map("actor_id") @db.Char(36)
+
+  /// TASK_ASSIGNED | COMMENT_MENTION | TASK_COMMENT
+  type String @db.VarChar(48)
+
+  entityType String  @map("entity_type") @db.VarChar(32)
+  entityId   String  @map("entity_id") @db.Char(36)
+  projectId  String? @map("project_id") @db.Char(36)
+
+  toEmail  String @map("to_email") @db.VarChar(320)
+  subject  String @db.VarChar(255)
+  bodyText String @map("body_text") @db.Text
+  bodyHtml String @map("body_html") @db.Text
+
+  /// PENDING | SENT | FAILED
+  status            String    @default("PENDING") @db.VarChar(32)
+  attempts          Int       @default(0)
+  lastError         String?   @map("last_error") @db.VarChar(1000)
+  providerMessageId String?   @map("provider_message_id") @db.VarChar(255)
+  sentAt            DateTime? @map("sent_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user  User @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  actor User @relation("NotificationActor", fields: [actorId], references: [id], onDelete: Cascade)
+
+  // The delivery worker's query: oldest pending first.
+  @@index([status, createdAt], map: "ix_notification_delivery")
+  @@index([userId, createdAt], map: "ix_notification_user")
+  @@map("notification")
+}
+
+model TimeLog {
+  id     String @id @default(uuid(4)) @db.Char(36)
+  taskId String @map("task_id") @db.Char(36)
+  userId String @map("user_id") @db.Char(36)
+
+  // Minutes, integer. Deliberately not a float — see the house rule on
+  // never using floats for accumulated quantities.
+  minutes Int
+  // The day the work happened, distinct from created_at.
+  spentOn DateTime @map("spent_on") @db.Date
+  note    String?  @db.VarChar(500)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([taskId, deletedAt], map: "ix_time_log_task")
+  @@index([userId, spentOn], map: "ix_time_log_user_date")
+  @@map("time_log")
+}
