@@ -56,6 +56,42 @@ The seed is not optional. The sign-in callback reads the `allowed_domain` table
 and nothing else, so an empty table refuses everyone — deliberately, because a
 config fallback in the sign-in path would be a way around the allowlist.
 
+## Attachment storage (Amazon S3)
+
+Attachments go through a small `Storage` interface with two drivers. Local disk is
+the default so development needs no AWS account; `STORAGE_DRIVER=s3` switches to
+S3 and nothing else changes.
+
+```bash
+STORAGE_DRIVER="s3"
+S3_BUCKET="inforvio-pm-attachments"     # must be PRIVATE
+S3_REGION="ap-south-1"
+# S3_PREFIX="production"                # optional, share one bucket per env
+# S3_KMS_KEY_ID="..."                   # optional, SSE-KMS instead of SSE-S3
+```
+
+Setup:
+
+1. **Create a private bucket.** Block Public Access on, no public policy. The app
+   never grants public reads.
+2. **Grant the app's role** `s3:PutObject`, `s3:GetObject` and `s3:DeleteObject`
+   on `arn:aws:s3:::<bucket>/*`. Credentials come from the SDK's default provider
+   chain (environment, shared profile, or instance/task role) — none go in `.env`.
+3. **Optionally set a lifecycle rule** to expire old versions, and enable
+   versioning if you want deleted attachments recoverable.
+
+Objects are encrypted at rest (SSE-S3 by default, SSE-KMS with `S3_KMS_KEY_ID`).
+
+**Downloads stream through the app rather than via a presigned URL.** That is
+deliberate: `GET /api/v1/attachments/:id/download` authorises the caller against
+the owning project before any byte moves, whereas a presigned URL is a bearer
+credential anyone could forward for its lifetime. With a 25 MB cap, proxying is
+cheap. If you later need presigned URLs for much larger files, add a fourth
+method to the interface rather than loosening the download route.
+
+Missing `S3_BUCKET` makes the app fail at **boot**, not on the first upload — a
+misconfigured server should not silently write attachments to local disk.
+
 ## Email notifications (Amazon SES)
 
 People are emailed when a task is **assigned** to them, when they are
