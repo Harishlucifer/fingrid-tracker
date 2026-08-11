@@ -40,11 +40,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { UserAvatar } from "@/components/user-avatar";
+import { UserAvatar, displayName } from "@/components/user-avatar";
 import { cn } from "@/lib/utils";
 
 import type { TaskCard } from "../projects/board/board.types";
 import {
+  useAssignableUsers,
   useMoveTaskCategory,
   useOverallBoard,
   type BoardFilters,
@@ -70,18 +71,36 @@ const CATEGORY_DOT: Record<string, string> = {
  * that is the only axis they share. Dropping a card moves it to the matching
  * category inside its own project; a task never changes project.
  */
-export function OverallBoardView({ canEdit }: { canEdit: boolean }) {
+export function OverallBoardView({
+  canEdit,
+  currentUserId,
+}: {
+  canEdit: boolean;
+  currentUserId: string;
+}) {
   const [projectId, setProjectId] = useState<string>("all");
-  const [mineOnly, setMineOnly] = useState(false);
+  const [assigneeId, setAssigneeId] = useState<string>("all");
 
   const filters: BoardFilters = {
     projectId: projectId === "all" ? undefined : projectId,
-    mineOnly,
+    assigneeId: assigneeId === "all" ? undefined : assigneeId,
   };
 
   const { data, isLoading } = useOverallBoard(filters);
+  const { data: users } = useAssignableUsers();
   const moveCategory = useMoveTaskCategory(filters);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+
+  // Yourself first — "what is on my plate" is the common reason to reach for
+  // this filter, and it is the one name that should never need scrolling for.
+  const assignees = useMemo(() => {
+    if (!users) return [];
+    return [...users].sort((a, b) => {
+      if (a.id === currentUserId) return -1;
+      if (b.id === currentUserId) return 1;
+      return displayName(a).localeCompare(displayName(b));
+    });
+  }, [users, currentUserId]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -150,15 +169,26 @@ export function OverallBoardView({ canEdit }: { canEdit: boolean }) {
           </SelectContent>
         </Select>
 
-        <label className="text-muted-foreground flex cursor-pointer items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={mineOnly}
-            onChange={(event) => setMineOnly(event.target.checked)}
-            className="accent-accent size-4"
-          />
-          Only mine
-        </label>
+        <Select value={assigneeId} onValueChange={setAssigneeId}>
+          <SelectTrigger className="w-full sm:w-56">
+            <SelectValue placeholder="All assignees" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All assignees</SelectItem>
+            {assignees.map((user) => (
+              <SelectItem key={user.id} value={user.id}>
+                <span className="flex min-w-0 items-center gap-2">
+                  <UserAvatar user={user} size="xs" />
+                  <span className="truncate">
+                    {user.id === currentUserId
+                      ? `${displayName(user)} (me)`
+                      : displayName(user)}
+                  </span>
+                </span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
         <span className="text-muted-foreground tnum ml-auto text-xs">
           {totalShown} card(s)
@@ -167,7 +197,8 @@ export function OverallBoardView({ canEdit }: { canEdit: boolean }) {
 
       {data?.truncated && (
         <p className="border-warning/30 bg-warning-bg text-warning rounded-lg border px-3 py-2 text-xs">
-          Showing the first 400 tasks only. Filter by project to narrow this down.
+          Showing the first 400 tasks only. Filter by project or assignee to
+          narrow this down.
         </p>
       )}
 
@@ -184,9 +215,11 @@ export function OverallBoardView({ canEdit }: { canEdit: boolean }) {
               icon={LayoutGrid}
               title="No tasks to show"
               hint={
-                mineOnly
-                  ? "Nothing is assigned to you in these projects. Clear the filter to see everything."
-                  : "Create a task in a project and it will appear here."
+                assigneeId === "all"
+                  ? "Create a task in a project and it will appear here."
+                  : assigneeId === currentUserId
+                    ? "Nothing is assigned to you in these projects. Clear the filter to see everything."
+                    : "Nothing is assigned to this person in these projects. Clear the filter to see everything."
               }
             />
           </CardContent>

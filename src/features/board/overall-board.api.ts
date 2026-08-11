@@ -6,9 +6,11 @@ import { toast } from "sonner";
 import { api, buildQuery } from "@/lib/api-client";
 
 import type { TaskCard } from "../projects/board/board.types";
+import type { UserRef } from "../projects/list/list.types";
 
 const URL_BOARD = "/api/v1/board";
 const URL_TASKS = "/api/v1/tasks";
+const URL_USERS = "/api/v1/users";
 
 export type OverallBoard = {
   columns: { category: string; tasks: TaskCard[]; total: number }[];
@@ -18,11 +20,15 @@ export type OverallBoard = {
 
 export type BoardFilters = {
   projectId?: string;
-  mineOnly?: boolean;
+  assigneeId?: string;
 };
 
 export const overallBoardKey = (filters: BoardFilters) =>
-  ["overall-board", filters.projectId ?? "all", filters.mineOnly ?? false] as const;
+  [
+    "overall-board",
+    filters.projectId ?? "all",
+    filters.assigneeId ?? "all",
+  ] as const;
 
 export function useOverallBoard(filters: BoardFilters) {
   return useQuery({
@@ -31,9 +37,21 @@ export function useOverallBoard(filters: BoardFilters) {
       api.get<OverallBoard>(
         `${URL_BOARD}${buildQuery({
           project_id: filters.projectId,
-          mine: filters.mineOnly ? "true" : undefined,
+          assignee_id: filters.assigneeId,
         })}`,
       ),
+  });
+}
+
+/**
+ * Active users, for the assignee filter. Shares the `assignable-users` cache
+ * key with the other pickers, so switching screens does not refetch it.
+ */
+export function useAssignableUsers() {
+  return useQuery({
+    queryKey: ["assignable-users"] as const,
+    queryFn: () => api.get<UserRef[]>(URL_USERS),
+    staleTime: 5 * 60 * 1000,
   });
 }
 

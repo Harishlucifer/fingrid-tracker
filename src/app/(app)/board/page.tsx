@@ -11,5 +11,10 @@ export const metadata = { title: "Board · Inforvio PM" };
  */
 export default async function OverallBoardPage() {
   const ctx = await requireSession();
-  return <OverallBoardView canEdit={canCreateProject(ctx.role)} />;
+  return (
+    <OverallBoardView
+      canEdit={canCreateProject(ctx.role)}
+      currentUserId={ctx.userId}
+    />
+  );
 }

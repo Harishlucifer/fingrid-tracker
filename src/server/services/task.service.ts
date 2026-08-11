@@ -741,6 +741,9 @@ export async function getOverallBoard(
     throw notFound("Project not found");
   }
 
+  const assigneeId =
+    filters.assigneeId ?? (filters.mineOnly ? ctx.userId : undefined);
+
   const where = {
     deletedAt: null,
     project: { deletedAt: null },
@@ -749,8 +752,9 @@ export async function getOverallBoard(
       : scope === "ALL"
         ? {}
         : { projectId: { in: scope } }),
-    ...(filters.mineOnly ? { assigneeId: ctx.userId } : {}),
-    ...(filters.assigneeId ? { assigneeId: filters.assigneeId } : {}),
+    // `mine=true` is the older spelling of "assignee_id is me". An explicit
+    // assignee wins, rather than the two spreads silently overwriting by order.
+    ...(assigneeId ? { assigneeId } : {}),
   };
 
   // Bounded so a large org cannot pull its entire task table into one board.
