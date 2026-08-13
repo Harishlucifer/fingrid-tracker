@@ -224,7 +224,7 @@ model TaskStatus {
   id        String  @id @default(uuid(4)) @db.Char(36)
   projectId String  @map("project_id") @db.Char(36)
   name      String  @db.VarChar(64)
-  // TODO | IN_PROGRESS | DONE
+  // TODO | IN_PROGRESS | CODE_REVIEW | TESTING | DONE — see STATUS_CATEGORIES
   category  String  @default("TODO") @db.VarChar(32)
   position  Int
   color     String? @db.VarChar(16)

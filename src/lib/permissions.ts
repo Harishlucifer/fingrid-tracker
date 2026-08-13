@@ -89,6 +89,26 @@ export function canManageOrgSettings(orgRole: string): boolean {
   return (orgRole as OrgRole) === "ADMIN";
 }
 
+/**
+ * Creating a project is ADMIN-only.
+ *
+ * A project is not just a container: creating one seeds board columns and makes
+ * the creator its LEAD, which is a grant of MANAGE over everything inside it.
+ * That is an org-shaping act, so it sits with the admin who can also see and
+ * unstick every project — the same reasoning as `canManageOrgSettings`.
+ */
 export function canCreateProject(orgRole: string): boolean {
+  return (orgRole as OrgRole) === "ADMIN";
+}
+
+/**
+ * Whether an org role permits editing anything at all — the gate for offering
+ * edit affordances in the UI, such as whether board cards are draggable.
+ *
+ * This is NOT project authorization. Per-project access is intersected on top
+ * by `effectiveProjectAccess`, and every write is re-checked by a guard in
+ * `src/server/auth/guards.ts`. This only decides what the UI bothers to show.
+ */
+export function canEditTasks(orgRole: string): boolean {
   return atLeast(orgRoleCeiling(orgRole), "EDIT");
 }

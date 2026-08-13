@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import {
   atLeast,
   canCreateProject,
+  canEditTasks,
   canManageOrgSettings,
   effectiveProjectAccess,
   orgRoleCeiling,
@@ -82,10 +83,21 @@ describe("org-level capabilities", () => {
     expect(canManageOrgSettings("nonsense")).toBe(false);
   });
 
-  it("lets members and admins create projects, but not viewers", () => {
+  it("restricts creating projects to admins", () => {
     expect(canCreateProject("ADMIN")).toBe(true);
-    expect(canCreateProject("MEMBER")).toBe(true);
+    expect(canCreateProject("MEMBER")).toBe(false);
     expect(canCreateProject("VIEWER")).toBe(false);
     expect(canCreateProject("nonsense")).toBe(false);
+  });
+
+  /**
+   * Distinct from creating a project on purpose: a MEMBER still works inside
+   * the projects they belong to, so the board stays draggable for them.
+   */
+  it("lets members and admins edit tasks, but not viewers", () => {
+    expect(canEditTasks("ADMIN")).toBe(true);
+    expect(canEditTasks("MEMBER")).toBe(true);
+    expect(canEditTasks("VIEWER")).toBe(false);
+    expect(canEditTasks("nonsense")).toBe(false);
   });
 });

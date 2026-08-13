@@ -19,9 +19,9 @@ export const GET = withApiHandler(
 export const POST = withApiHandler(
   async () => {
     const ctx = await requireSession();
-    // VIEWERs may read projects but not create them.
+    // Everyone may read the projects they can see; only an ADMIN creates one.
     if (!canCreateProject(ctx.role)) {
-      throw forbidden("Your role cannot create projects.");
+      throw forbidden("Only an admin can create a project.");
     }
     return ctx;
   },

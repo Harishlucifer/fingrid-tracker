@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { UserAvatar, displayName } from "@/components/user-avatar";
+import { STATUS_CATEGORIES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 import type { TaskCard } from "../projects/board/board.types";
@@ -54,12 +55,16 @@ import {
 const CATEGORY_LABEL: Record<string, string> = {
   TODO: "To do",
   IN_PROGRESS: "In progress",
+  CODE_REVIEW: "Code review",
+  TESTING: "Testing",
   DONE: "Done",
 };
 
 const CATEGORY_DOT: Record<string, string> = {
   TODO: "bg-priority-low",
   IN_PROGRESS: "bg-chart-1",
+  CODE_REVIEW: "bg-chart-2",
+  TESTING: "bg-warning",
   DONE: "bg-success",
 };
 
@@ -203,10 +208,10 @@ export function OverallBoardView({
       )}
 
       {isLoading ? (
-        <div className="flex gap-4">
-          <Skeleton className="h-96 w-80 shrink-0" />
-          <Skeleton className="h-96 w-80 shrink-0" />
-          <Skeleton className="h-96 w-80 shrink-0" />
+        <div className="board-scroll flex gap-4">
+          {STATUS_CATEGORIES.map((category) => (
+            <Skeleton key={category} className="h-96 w-80 shrink-0" />
+          ))}
         </div>
       ) : totalShown === 0 ? (
         <Card className="shadow-card">

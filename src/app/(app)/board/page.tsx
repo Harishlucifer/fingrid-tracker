@@ -1,5 +1,5 @@
 import { OverallBoardView } from "@/features/board/overall-board.view";
-import { canCreateProject } from "@/lib/permissions";
+import { canEditTasks } from "@/lib/permissions";
 import { requireSession } from "@/server/auth/guards";
 
 export const metadata = { title: "Board · Inforvio PM" };
@@ -13,7 +13,7 @@ export default async function OverallBoardPage() {
   const ctx = await requireSession();
   return (
     <OverallBoardView
-      canEdit={canCreateProject(ctx.role)}
+      canEdit={canEditTasks(ctx.role)}
       currentUserId={ctx.userId}
     />
   );

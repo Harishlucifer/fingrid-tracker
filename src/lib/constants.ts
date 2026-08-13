@@ -32,11 +32,22 @@ export const projectStatusSchema = z.enum(PROJECT_STATUSES);
 export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
 
 /**
- * Board-column semantics. `DONE` is load-bearing: moving a task into a column
- * of this category stamps `task.completed_at`, which is what the burndown and
- * throughput reports read.
+ * Board-column semantics, in workflow order — the overall board renders its
+ * columns in exactly this sequence.
+ *
+ * `DONE` is load-bearing: moving a task into a column of this category stamps
+ * `task.completed_at`, which is what the burndown and throughput reports read.
+ * Every other category is inert to the reports, which is why `CODE_REVIEW` and
+ * `TESTING` can sit between `IN_PROGRESS` and `DONE` without touching them:
+ * work in review or in test is still open work, and counts as such.
  */
-export const STATUS_CATEGORIES = ["TODO", "IN_PROGRESS", "DONE"] as const;
+export const STATUS_CATEGORIES = [
+  "TODO",
+  "IN_PROGRESS",
+  "CODE_REVIEW",
+  "TESTING",
+  "DONE",
+] as const;
 export const statusCategorySchema = z.enum(STATUS_CATEGORIES);
 export type StatusCategory = (typeof STATUS_CATEGORIES)[number];
 
@@ -52,6 +63,8 @@ export type SprintStatus = (typeof SPRINT_STATUSES)[number];
 export const DEFAULT_TASK_STATUSES = [
   { name: "To Do", category: "TODO", color: "#64708a" },
   { name: "In Progress", category: "IN_PROGRESS", color: "#3185ff" },
+  { name: "Code Review", category: "CODE_REVIEW", color: "#8257e5" },
+  { name: "Testing", category: "TESTING", color: "#a86a06" },
   { name: "Done", category: "DONE", color: "#0e9a5e" },
 ] as const satisfies ReadonlyArray<{
   name: string;
