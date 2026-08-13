@@ -600,7 +600,7 @@ function AttachmentPreviewDialog({
 }) {
   return (
     <Dialog open={Boolean(attachment)} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-4xl">
+      <DialogContent className="w-[95vw] sm:max-w-5xl">
         {attachment && (
           <>
             <DialogHeader>
@@ -612,7 +612,7 @@ function AttachmentPreviewDialog({
               </DialogDescription>
             </DialogHeader>
 
-            <div className="bg-secondary/40 flex max-h-[70vh] min-h-64 items-center justify-center overflow-auto rounded-lg">
+            <div className="bg-secondary/40 flex max-h-[75vh] min-h-48 items-center justify-center overflow-auto rounded-lg">
               {attachment.preview_kind === "image" ? (
                 /* next/image cannot be used here: the source is a per-user
                    authorized API route behind a session cookie, not a static
@@ -621,13 +621,13 @@ function AttachmentPreviewDialog({
                 <img
                   src={attachment.preview_url ?? ""}
                   alt={attachment.file_name}
-                  className="max-h-[70vh] w-auto object-contain"
+                  className="max-h-[75vh] max-w-full object-contain"
                 />
               ) : (
                 <iframe
                   src={attachment.preview_url ?? ""}
                   title={attachment.file_name}
-                  className="h-[70vh] w-full rounded-lg bg-white"
+                  className="h-[75vh] w-full rounded-lg bg-white"
                 />
               )}
             </div>
