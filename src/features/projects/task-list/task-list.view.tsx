@@ -5,6 +5,7 @@ import { ListChecks } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
+import { TypeBadge } from "@/components/task-meta";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -25,7 +26,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { api, buildQuery } from "@/lib/api-client";
-import { TASK_PRIORITIES } from "@/lib/constants";
+import { TASK_PRIORITIES, TASK_TYPES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 import { useProject } from "../board/board.api";
@@ -37,19 +38,29 @@ const URL_TASKS = "/api/v1/tasks";
 export function TaskListView({ projectId }: { projectId: string }) {
   const [search, setSearch] = useState("");
   const [statusId, setStatusId] = useState("all");
+  const [type, setType] = useState("all");
   const [priority, setPriority] = useState("all");
   const [openOnly, setOpenOnly] = useState(false);
 
   const { data: project } = useProject(projectId);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["task-list", projectId, search, statusId, priority, openOnly] as const,
+    queryKey: [
+      "task-list",
+      projectId,
+      search,
+      statusId,
+      type,
+      priority,
+      openOnly,
+    ] as const,
     queryFn: () =>
       api.getPaged<TaskCard[]>(
         `${URL_TASKS}${buildQuery({
           projectId,
           q: search || undefined,
           statusId: statusId === "all" ? undefined : statusId,
+          type: type === "all" ? undefined : type,
           priority: priority === "all" ? undefined : priority,
           open: openOnly ? "true" : undefined,
           per_page: 100,
@@ -78,6 +89,20 @@ export function TaskListView({ projectId }: { projectId: string }) {
             {project?.statuses.map((status) => (
               <SelectItem key={status.id} value={status.id}>
                 {status.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={type} onValueChange={setType}>
+          <SelectTrigger className="w-32">
+            <SelectValue placeholder="Type" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All types</SelectItem>
+            {TASK_TYPES.map((value) => (
+              <SelectItem key={value} value={value}>
+                {value}
               </SelectItem>
             ))}
           </SelectContent>
@@ -128,6 +153,7 @@ export function TaskListView({ projectId }: { projectId: string }) {
                     <TableHead className="w-24">Ref</TableHead>
                     <TableHead>Title</TableHead>
                     <TableHead className="w-32">Status</TableHead>
+                    <TableHead className="w-24">Type</TableHead>
                     <TableHead className="w-24">Priority</TableHead>
                     <TableHead className="w-40">Assignee</TableHead>
                     <TableHead className="w-28">Due</TableHead>
@@ -157,6 +183,9 @@ export function TaskListView({ projectId }: { projectId: string }) {
                           <Badge variant="secondary" className="text-[10px]">
                             {task.status.name}
                           </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <TypeBadge type={task.type} />
                         </TableCell>
                         <TableCell className="text-xs">{task.priority}</TableCell>
                         <TableCell className="text-muted-foreground truncate text-xs">

@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, Paperclip, Send, Trash2, Upload } from "lucide-react";
+import { Loader2, Paperclip, Pencil, Send, Trash2, Upload } from "lucide-react";
 import Link from "next/link";
 import { useRef, useState } from "react";
 
@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { TASK_PRIORITIES } from "@/lib/constants";
+import { TASK_PRIORITIES, TASK_TYPES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 import { useProject } from "../../projects/board/board.api";
@@ -79,7 +79,7 @@ export function TaskDetailView({
           <span>/</span>
           <span className="font-mono">{task.ref}</span>
         </div>
-        <h1 className="text-2xl font-semibold tracking-tight">{task.title}</h1>
+        <TaskTitle taskId={taskId} task={task} canEdit={canEdit} />
       </header>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -107,6 +107,111 @@ export function TaskDetailView({
 }
 
 type Task = NonNullable<ReturnType<typeof useTask>["data"]>;
+
+/**
+ * The task heading, editable in place.
+ *
+ * Enter saves and Escape cancels — what a single-line field is expected to do.
+ * The description below deliberately uses buttons only, because a textarea needs
+ * Enter for newlines.
+ *
+ * An empty title is refused here as well as by the API: `updateTaskSchema`
+ * requires at least one character, so saving one would only produce a 400 after
+ * the round trip.
+ */
+function TaskTitle({
+  taskId,
+  task,
+  canEdit,
+}: {
+  taskId: string;
+  task: Task;
+  canEdit: boolean;
+}) {
+  const updateTask = useUpdateTask(taskId);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(task.title);
+
+  const trimmed = draft.trim();
+
+  function save() {
+    // Nothing worth sending: keep the editor open rather than silently
+    // discarding what they typed.
+    if (!trimmed) return;
+    if (trimmed === task.title) {
+      setEditing(false);
+      return;
+    }
+    updateTask.mutate(
+      { title: trimmed },
+      { onSuccess: () => setEditing(false) },
+    );
+  }
+
+  if (!editing) {
+    return (
+      <div className="group flex items-start gap-1.5">
+        <h1 className="text-2xl font-semibold tracking-tight">{task.title}</h1>
+        {canEdit && (
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Edit title"
+            className="text-muted-foreground hover:text-foreground mt-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+            onClick={() => {
+              setDraft(task.title);
+              setEditing(true);
+            }}
+          >
+            <Pencil className="size-4" />
+          </Button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <Input
+        autoFocus
+        value={draft}
+        maxLength={500}
+        aria-label="Task title"
+        aria-invalid={!trimmed}
+        className="h-auto py-1.5 text-2xl font-semibold tracking-tight md:text-2xl"
+        onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            save();
+          }
+          if (event.key === "Escape") setEditing(false);
+        }}
+      />
+      <div className="flex items-center gap-2">
+        <Button
+          size="sm"
+          disabled={!trimmed || updateTask.isPending}
+          onClick={save}
+        >
+          {updateTask.isPending && <Loader2 className="size-4 animate-spin" />}
+          Save
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => setEditing(false)}
+          disabled={updateTask.isPending}
+        >
+          Cancel
+        </Button>
+        {!trimmed && (
+          <span className="text-danger text-xs">A title is required.</span>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function DescriptionCard({
   taskId,
@@ -215,6 +320,25 @@ function PropertiesCard({
               {project?.statuses.map((status) => (
                 <SelectItem key={status.id} value={status.id}>
                   {status.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+
+        <Field label="Type">
+          <Select
+            value={task.type}
+            disabled={!canEdit || updateTask.isPending}
+            onValueChange={(type) => updateTask.mutate({ type })}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {TASK_TYPES.map((option) => (
+                <SelectItem key={option} value={option}>
+                  {option}
                 </SelectItem>
               ))}
             </SelectContent>

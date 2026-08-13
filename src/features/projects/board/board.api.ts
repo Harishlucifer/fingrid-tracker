@@ -39,6 +39,7 @@ export function useCreateTask(projectId: string) {
     mutationFn: (input: {
       title: string;
       statusId: string;
+      type: string;
       priority: string;
       assigneeId?: string | null;
       description?: string;

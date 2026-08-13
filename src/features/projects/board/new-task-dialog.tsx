@@ -25,12 +25,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { TASK_PRIORITIES } from "@/lib/constants";
+import { TASK_PRIORITIES, TASK_TYPES } from "@/lib/constants";
 
 import { useCreateTask, useProject } from "./board.api";
 
 const formSchema = z.object({
   title: z.string().min(1, "Title is required").max(500),
+  type: z.enum(TASK_TYPES),
   priority: z.enum(TASK_PRIORITIES),
   assigneeId: z.string().optional(),
   description: z.string().max(20000).optional(),
@@ -52,10 +53,17 @@ export function NewTaskButton({
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
-    defaultValues: { title: "", priority: "MEDIUM", assigneeId: "", description: "" },
+    defaultValues: {
+      title: "",
+      type: "STORY",
+      priority: "MEDIUM",
+      assigneeId: "",
+      description: "",
+    },
   });
 
   // useWatch, not form.watch() — see the note in settings/domains.view.tsx.
+  const type = useWatch({ control: form.control, name: "type" });
   const priority = useWatch({ control: form.control, name: "priority" });
   const assigneeId = useWatch({ control: form.control, name: "assigneeId" });
 
@@ -64,6 +72,7 @@ export function NewTaskButton({
       {
         title: values.title,
         statusId,
+        type: values.type,
         priority: values.priority,
         // "" means unassigned; the API wants null rather than an empty string.
         assigneeId: values.assigneeId || null,
@@ -109,6 +118,27 @@ export function NewTaskButton({
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="type">Type</Label>
+                <Select
+                  value={type}
+                  onValueChange={(value) =>
+                    form.setValue("type", value as FormValues["type"])
+                  }
+                >
+                  <SelectTrigger id="type" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TASK_TYPES.map((option) => (
+                      <SelectItem key={option} value={option}>
+                        {option}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div className="space-y-1.5">
                 <Label htmlFor="priority">Priority</Label>
                 <Select

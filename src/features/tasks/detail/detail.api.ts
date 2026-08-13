@@ -65,8 +65,11 @@ export function useUpdateTask(taskId: string) {
       api.patch<TaskCard>(`${URL_TASKS}/${taskId}`, input),
     onSuccess: (task) => {
       queryClient.setQueryData(taskKey(taskId), task);
-      // The board caches its own copy of every card.
+      // Every list caches its own copy of the card, so an edited title or type
+      // would otherwise stay stale on whichever screen the user goes back to.
       void queryClient.invalidateQueries({ queryKey: ["board"] });
+      void queryClient.invalidateQueries({ queryKey: ["overall-board"] });
+      void queryClient.invalidateQueries({ queryKey: ["task-list"] });
       toast.success("Task updated.");
     },
     onError: (error: Error) => toast.error(error.message),

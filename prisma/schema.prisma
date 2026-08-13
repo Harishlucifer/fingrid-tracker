@@ -254,6 +254,8 @@ model Task {
   number      Int
   title       String  @db.VarChar(500)
   description String? @db.Text
+  // STORY | ISSUE — see TASK_TYPES
+  type        String  @default("STORY") @db.VarChar(32)
   // LOW | MEDIUM | HIGH | URGENT
   priority    String  @default("MEDIUM") @db.VarChar(32)
 

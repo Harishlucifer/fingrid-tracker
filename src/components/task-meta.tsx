@@ -1,4 +1,4 @@
-import { AlertTriangle, CalendarDays } from "lucide-react";
+import { AlertTriangle, Bug, BookOpen, CalendarDays } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -11,6 +11,47 @@ import { cn } from "@/lib/utils";
  * always carry the text label. Color alone would be unreadable for a
  * colorblind viewer, which is why the label is not optional.
  */
+
+/**
+ * Task type. Unlike priority this is categorical, not a ramp — a story is not
+ * "less" than an issue — so the two get distinct hues of equal weight rather
+ * than positions on a severity scale, and each carries its own icon so the
+ * distinction survives greyscale and colorblindness.
+ */
+const TYPE_STYLES: Record<string, { className: string; label: string }> = {
+  STORY: {
+    className: "border-chart-1/40 text-chart-1",
+    label: "Story",
+  },
+  ISSUE: {
+    className: "border-priority-urgent/40 text-priority-urgent bg-danger-bg",
+    label: "Issue",
+  },
+};
+
+export function TypeBadge({
+  type,
+  className,
+}: {
+  type: string;
+  className?: string;
+}) {
+  const style = TYPE_STYLES[type] ?? TYPE_STYLES.STORY;
+  const Icon = type === "ISSUE" ? Bug : BookOpen;
+
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium tracking-wide uppercase",
+        style.className,
+        className,
+      )}
+    >
+      <Icon className="size-3" aria-hidden="true" />
+      {style.label}
+    </span>
+  );
+}
 
 const PRIORITY_STYLES: Record<string, string> = {
   LOW: "border-priority-low/30 text-priority-low",

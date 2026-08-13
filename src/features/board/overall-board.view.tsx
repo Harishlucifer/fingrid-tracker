@@ -28,6 +28,7 @@ import { PageHeader } from "@/components/page-header";
 import {
   DueDate,
   PriorityBadge,
+  TypeBadge,
   formatMinutes,
 } from "@/components/task-meta";
 import { Badge } from "@/components/ui/badge";
@@ -391,6 +392,7 @@ function BoardCard({
       </div>
 
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+        <TypeBadge type={task.type} />
         <PriorityBadge priority={task.priority} />
         <DueDate dueDate={task.due_date} completedAt={task.completed_at} />
         {/* The concrete per-project column, since the header only shows the category. */}

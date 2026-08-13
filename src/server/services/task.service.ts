@@ -14,6 +14,7 @@ import {
   STATUS_CATEGORIES,
   statusCategorySchema,
   taskPrioritySchema,
+  taskTypeSchema,
 } from "@/lib/constants";
 import type { AuthCtx, ProjectAuthCtx } from "@/server/auth/guards";
 import { prisma } from "@/server/db/prisma";
@@ -28,6 +29,7 @@ export const createTaskSchema = z.object({
   title: z.string().min(1).max(500),
   description: z.string().max(20000).optional(),
   statusId: z.string().min(1).optional(),
+  type: taskTypeSchema.default("STORY"),
   priority: taskPrioritySchema.default("MEDIUM"),
   assigneeId: z.string().min(1).nullable().optional(),
   sprintId: z.string().min(1).nullable().optional(),
@@ -39,6 +41,7 @@ export const updateTaskSchema = z.object({
   title: z.string().min(1).max(500).optional(),
   description: z.string().max(20000).nullable().optional(),
   statusId: z.string().min(1).optional(),
+  type: taskTypeSchema.optional(),
   priority: taskPrioritySchema.optional(),
   assigneeId: z.string().min(1).nullable().optional(),
   sprintId: z.string().min(1).nullable().optional(),
@@ -63,6 +66,7 @@ export const listTasksQuerySchema = z.object({
    * which is a different question from "has no sprint".
    */
   sprintId: z.string().optional(),
+  type: taskTypeSchema.optional(),
   priority: taskPrioritySchema.optional(),
   q: z.string().optional(),
   open: z.coerce.boolean().optional(),
@@ -76,6 +80,7 @@ const taskSelect = {
   number: true,
   title: true,
   description: true,
+  type: true,
   priority: true,
   position: true,
   dueDate: true,
@@ -101,6 +106,7 @@ type TaskRow = {
   number: number;
   title: string;
   description: string | null;
+  type: string;
   priority: string;
   position: number;
   dueDate: Date | null;
@@ -134,6 +140,7 @@ function toDto(row: TaskRow) {
     number: row.number,
     title: row.title,
     description: row.description,
+    type: row.type,
     priority: row.priority,
     position: row.position,
     due_date: row.dueDate?.toISOString() ?? null,
@@ -195,6 +202,7 @@ export async function listTasks(
         ? { sprintId: null }
         : { sprintId: filters.sprintId }
       : {}),
+    ...(filters.type ? { type: filters.type } : {}),
     ...(filters.priority ? { priority: filters.priority } : {}),
     ...(filters.open ? { completedAt: null } : {}),
     ...(filters.q ? { title: { contains: filters.q } } : {}),
@@ -311,6 +319,7 @@ export async function createTask(
         number: project.taskSeq,
         title: input.title,
         description: input.description ?? null,
+        type: input.type,
         priority: input.priority,
         assigneeId: input.assigneeId ?? null,
         reporterId: ctx.userId,
@@ -334,6 +343,7 @@ export async function createTask(
         payload: {
           ref: `${project.key}-${task.number}`,
           title: input.title,
+          type: input.type,
           priority: input.priority,
         },
       },
@@ -364,6 +374,7 @@ export async function updateTask(
     select: {
       title: true,
       description: true,
+      type: true,
       priority: true,
       statusId: true,
       assigneeId: true,
@@ -398,6 +409,7 @@ export async function updateTask(
         ? {}
         : { description: input.description }),
       ...(input.statusId === undefined ? {} : { statusId: input.statusId }),
+      ...(input.type === undefined ? {} : { type: input.type }),
       ...(input.priority === undefined ? {} : { priority: input.priority }),
       ...(input.assigneeId === undefined
         ? {}

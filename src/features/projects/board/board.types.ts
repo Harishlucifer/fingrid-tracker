@@ -6,6 +6,7 @@ export type TaskCard = {
   number: number;
   title: string;
   description: string | null;
+  type: string;
   priority: string;
   position: number;
   due_date: string | null;

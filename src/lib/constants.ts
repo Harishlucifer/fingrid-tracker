@@ -51,6 +51,16 @@ export const STATUS_CATEGORIES = [
 export const statusCategorySchema = z.enum(STATUS_CATEGORIES);
 export type StatusCategory = (typeof STATUS_CATEGORIES)[number];
 
+/**
+ * What kind of work a task represents. `STORY` is planned work; `ISSUE` is
+ * something wrong with what already exists. Purely descriptive — nothing in the
+ * board, the reports or the notification rules branches on it — so a project can
+ * adopt the distinction without either type behaving differently.
+ */
+export const TASK_TYPES = ["STORY", "ISSUE"] as const;
+export const taskTypeSchema = z.enum(TASK_TYPES);
+export type TaskType = (typeof TASK_TYPES)[number];
+
 export const TASK_PRIORITIES = ["LOW", "MEDIUM", "HIGH", "URGENT"] as const;
 export const taskPrioritySchema = z.enum(TASK_PRIORITIES);
 export type TaskPriority = (typeof TASK_PRIORITIES)[number];
