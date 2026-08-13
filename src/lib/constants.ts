@@ -120,6 +120,44 @@ export const BOARD_POSITION_GAP = 1024;
  * Accepted attachment MIME types. An allowlist, not a denylist — anything not
  * named here is rejected outright rather than sanitized.
  */
+/**
+ * What may be rendered INLINE in the browser, and as which content type.
+ *
+ * This is deliberately a separate, much shorter list than
+ * `ALLOWED_UPLOAD_MIME_TYPES`: serving user-uploaded bytes inline from our own
+ * origin is how stored XSS happens, so the rule is that nothing capable of
+ * executing script is ever previewed.
+ *
+ *  * `image/svg+xml` is uploadable but NOT previewable — an SVG is a document
+ *    that can carry `<script>`, and inline it would run as same-origin code in
+ *    the viewer's session. It downloads instead.
+ *  * `text/*` and JSON are served as `text/plain` rather than echoed back with
+ *    their stored type, so nothing can be coaxed into being treated as HTML.
+ *  * Office documents and archives are not renderable by a browser anyway.
+ *
+ * The served type is fixed here rather than taken from the stored row, because
+ * the stored MIME comes from the uploader.
+ */
+export const PREVIEWABLE_MIME_TYPES: Record<string, string> = {
+  "image/png": "image/png",
+  "image/jpeg": "image/jpeg",
+  "image/gif": "image/gif",
+  "image/webp": "image/webp",
+  "application/pdf": "application/pdf",
+  "text/plain": "text/plain; charset=utf-8",
+  "text/csv": "text/plain; charset=utf-8",
+  "text/markdown": "text/plain; charset=utf-8",
+  "application/json": "text/plain; charset=utf-8",
+};
+
+/** How the client should render a previewable file. */
+export function previewKindOf(
+  mimeType: string,
+): "image" | "document" | null {
+  if (!(mimeType in PREVIEWABLE_MIME_TYPES)) return null;
+  return mimeType.startsWith("image/") ? "image" : "document";
+}
+
 export const ALLOWED_UPLOAD_MIME_TYPES = [
   "image/png",
   "image/jpeg",

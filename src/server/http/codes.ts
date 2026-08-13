@@ -26,6 +26,8 @@ export const ErrorCodes = {
   // Uploads
   UPLOAD_TOO_LARGE: "UPLOAD_001",
   UPLOAD_MIME_REJECTED: "UPLOAD_002",
+  /** Uploadable, but never rendered inline — see PREVIEWABLE_MIME_TYPES. */
+  UPLOAD_NOT_PREVIEWABLE: "UPLOAD_003",
 
   // Catch-alls
   RATE_LIMITED: "RATE_001",

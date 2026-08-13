@@ -1,6 +1,14 @@
 "use client";
 
-import { Loader2, Paperclip, Pencil, Send, Trash2, Upload } from "lucide-react";
+import {
+  Download,
+  Loader2,
+  Paperclip,
+  Pencil,
+  Send,
+  Trash2,
+  Upload,
+} from "lucide-react";
 import Link from "next/link";
 import { useRef, useState } from "react";
 
@@ -13,6 +21,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -29,6 +45,7 @@ import { cn } from "@/lib/utils";
 
 import { useProject } from "../../projects/board/board.api";
 import {
+  type Attachment,
   useAttachments,
   useComments,
   useCreateComment,
@@ -455,6 +472,7 @@ function AttachmentsCard({
   const upload = useUploadAttachment(taskId);
   const remove = useDeleteAttachment(taskId);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [previewing, setPreviewing] = useState<Attachment | null>(null);
 
   return (
     <Card>
@@ -505,19 +523,39 @@ function AttachmentsCard({
               >
                 <Paperclip className="text-muted-foreground size-4 shrink-0" />
                 <div className="min-w-0 flex-1">
-                  {/* Goes through the authorized download route, never a
-                      public/ URL. */}
-                  <a
-                    href={attachment.download_url}
-                    className="hover:text-accent truncate text-sm font-medium"
-                  >
-                    {attachment.file_name}
-                  </a>
+                  {/* Both routes authorize per user; neither is a public URL.
+                      A file with no preview_url is one we refuse to render
+                      inline, so it stays a plain download. */}
+                  {attachment.preview_url ? (
+                    <button
+                      type="button"
+                      onClick={() => setPreviewing(attachment)}
+                      className="hover:text-accent block max-w-full truncate text-left text-sm font-medium"
+                    >
+                      {attachment.file_name}
+                    </button>
+                  ) : (
+                    <a
+                      href={attachment.download_url}
+                      className="hover:text-accent block max-w-full truncate text-sm font-medium"
+                    >
+                      {attachment.file_name}
+                    </a>
+                  )}
                   <p className="text-muted-foreground text-xs">
                     {formatBytes(attachment.size_bytes)} ·{" "}
                     {attachment.uploader.name ?? attachment.uploader.email}
                   </p>
                 </div>
+                {attachment.preview_url && (
+                  <a
+                    href={attachment.download_url}
+                    className="text-muted-foreground hover:text-foreground shrink-0 p-2"
+                    aria-label={`Download ${attachment.file_name}`}
+                  >
+                    <Download className="size-4" />
+                  </a>
+                )}
                 {(attachment.uploader.id === currentUserId || canEdit) && (
                   <Button
                     variant="ghost"
@@ -535,7 +573,78 @@ function AttachmentsCard({
           </ul>
         )}
       </CardContent>
+
+      <AttachmentPreviewDialog
+        attachment={previewing}
+        onClose={() => setPreviewing(null)}
+      />
     </Card>
+  );
+}
+
+/**
+ * Inline preview of one attachment.
+ *
+ * Images render directly; PDFs and text render in an iframe, which is also what
+ * confines them — the preview route sends `Content-Security-Policy: sandbox`, so
+ * the frame is an opaque origin that cannot reach this page or its session. The
+ * dialog always offers Download too, because a preview is not a substitute for
+ * having the file.
+ */
+function AttachmentPreviewDialog({
+  attachment,
+  onClose,
+}: {
+  attachment: Attachment | null;
+  onClose: () => void;
+}) {
+  return (
+    <Dialog open={Boolean(attachment)} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-4xl">
+        {attachment && (
+          <>
+            <DialogHeader>
+              <DialogTitle className="truncate pr-8">
+                {attachment.file_name}
+              </DialogTitle>
+              <DialogDescription>
+                {formatBytes(attachment.size_bytes)} · {attachment.mime_type}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="bg-secondary/40 flex max-h-[70vh] min-h-64 items-center justify-center overflow-auto rounded-lg">
+              {attachment.preview_kind === "image" ? (
+                /* next/image cannot be used here: the source is a per-user
+                   authorized API route behind a session cookie, not a static
+                   asset the optimizer can fetch and cache. */
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={attachment.preview_url ?? ""}
+                  alt={attachment.file_name}
+                  className="max-h-[70vh] w-auto object-contain"
+                />
+              ) : (
+                <iframe
+                  src={attachment.preview_url ?? ""}
+                  title={attachment.file_name}
+                  className="h-[70vh] w-full rounded-lg bg-white"
+                />
+              )}
+            </div>
+
+            <DialogFooter>
+              <a
+                href={attachment.download_url}
+                className="text-muted-foreground hover:text-foreground inline-flex items-center gap-2 text-sm"
+              >
+                <Download className="size-4" />
+                Download
+              </a>
+            </DialogFooter>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 

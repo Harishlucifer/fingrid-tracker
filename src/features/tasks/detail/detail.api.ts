@@ -31,6 +31,9 @@ export type Attachment = {
   created_at: string;
   uploader: UserRef;
   download_url: string;
+  /** Null when the type must never be rendered inline — an SVG, a .docx. */
+  preview_url: string | null;
+  preview_kind: "image" | "document" | null;
 };
 
 export type TimeLogs = {
