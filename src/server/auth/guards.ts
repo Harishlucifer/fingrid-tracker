@@ -11,6 +11,8 @@
  * strategy — see the note in `config.ts`.
  */
 
+import { cache } from "react";
+
 import { ErrorCodes } from "@/server/http/codes";
 import { forbidden, notFound, unauthorized } from "@/server/http/errors";
 import { prisma } from "@/server/db/prisma";
@@ -37,13 +39,25 @@ export type ProjectAuthCtx = AuthCtx & {
 };
 
 /**
+ * The session read, deduplicated for the duration of ONE request.
+ *
+ * `auth()` is a database round-trip, and a single page render makes several
+ * calls that all want the same answer — `(app)/layout.tsx` and the page below it
+ * at minimum. React's `cache` collapses those into one query per request. It
+ * does NOT cache across requests, so the revocation guarantee of the database
+ * session strategy is untouched: the next request reads the row again, and a
+ * deleted session is still refused immediately.
+ */
+export const getSession = cache(async () => auth());
+
+/**
  * Require a valid session. Throws `AppError(401, AUTH_001)`.
  *
  * Also re-checks `isActive`: a user deactivated mid-session must not continue on
  * an existing session row.
  */
 export async function requireSession(): Promise<AuthCtx> {
-  const session = await auth();
+  const session = await getSession();
 
   if (!session?.user?.id) throw unauthorized();
 

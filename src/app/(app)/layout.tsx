@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { AppShell } from "@/components/app-shell/app-shell";
-import { auth } from "@/server/auth/config";
+import { getSession } from "@/server/auth/guards";
 
 /**
  * The authenticated boundary.
@@ -15,7 +15,9 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const session = await auth();
+  // Shared with the page below via React `cache` — one session query per
+  // request, not one per component that asks.
+  const session = await getSession();
 
   if (!session?.user?.id) redirect("/login");
   if (!session.user.isActive) redirect("/login?error=AccountDisabled");
