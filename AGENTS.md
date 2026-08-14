@@ -144,6 +144,16 @@ like Google's `hd`. The scheduled pass deliberately does not reset `FAILED`
 rows; that stays the explicit admin action above, or the attempt ceiling would
 mean nothing.
 
+It runs **daily**, not often, because Vercel's Hobby plan permits only one cron
+run per day — a sub-daily `schedule` is rejected outright at deploy. Treat it as
+a floor rather than the mechanism: the after-response flush still delivers on
+every task and comment write, so the cron only matters for retrying a send that
+failed, and daily means such a row waits at most a day on a silent system. A
+tighter loop needs either Vercel Pro or an external scheduler calling the same
+URL with the same bearer token. Concurrent flushes are safe either way —
+`deliverPending` claims each row with an `updateMany` guarded on
+`status: "PENDING"` and skips whatever it loses.
+
 **Pure logic must not sit behind a Prisma import.** This bit me three times
 (`mentions.ts`, `month.ts`, `rules.ts`): a module that imports
 `@/server/db/prisma` cannot be unit-tested, because the client is constructed at

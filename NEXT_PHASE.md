@@ -176,21 +176,32 @@ already landed.
    plus the manual `POST /api/v1/admin/notifications`. `vercel.json` defines no
    cron jobs. A row whose delivery fails therefore stays `PENDING` until someone
    happens to write a task or a comment; over a quiet period it is never
-   retried. `GET /api/cron/notifications` is now that scheduled flush, running
-   every ten minutes from `vercel.json`. Vercel cron issues an unauthenticated
-   `GET` while the admin endpoint is `POST` behind `requireAdmin()`, so it
-   authenticates a shared `CRON_SECRET` instead, and denies when that is unset.
-   **Set `CRON_SECRET` on the Vercel project** — until then the platform sends
-   no credential and the endpoint correctly refuses its own cron. Note the plan
-   ceiling: Hobby projects are limited to roughly one cron run per day.
-2. **Automated verification — partly delivered.** `.github/workflows/ci.yml` now
-   runs `lint`, `typecheck` and `test` on every pull request. `build` is left to
-   Vercel, which needs the `DB_*` variables anyway. Still outstanding: enable
-   **preview deployments**, so the typecheck and build Vercel already runs
-   happen before merge rather than after; and add browser/API integration
-   coverage for sign-in denial, role boundaries, project isolation, task moves,
-   uploads, and notification-outbox retry. Adding `format:check` to CI needs a
-   repository-wide Prettier commit first — 148 files are not currently clean.
+   retried. `GET /api/cron/notifications` is now that scheduled flush, run from
+   `vercel.json`. Vercel cron issues an unauthenticated `GET` while the admin
+   endpoint is `POST` behind `requireAdmin()`, so it authenticates a shared
+   `CRON_SECRET` instead, and denies when that is unset. **Set `CRON_SECRET` on
+   the Vercel project** — until then the platform sends no credential and the
+   endpoint correctly refuses its own cron.
+
+   It runs **daily**, because the Vercel Hobby plan rejects any sub-daily
+   schedule at deploy time. That is a real reduction in the guarantee: a send
+   that fails can now wait a day rather than ten minutes. It is a floor, not the
+   mechanism — the after-response flush still delivers on every task and comment
+   write — but if retry latency matters, the options are Vercel Pro or an
+   external scheduler calling the same URL with the same bearer token.
+   Concurrent flushes are safe: rows are claimed with a guarded `updateMany`.
+
+2. **Automated verification — partly delivered.** `bitbucket-pipelines.yml` runs
+   `lint`, `typecheck` and `test` on every pull request. `build` is left to
+   Vercel, which needs the `DB_*` variables anyway. Note the budget: Bitbucket's
+   free tier allows 50 build minutes a month and this step costs about three, so
+   it is deliberately scoped to pull requests rather than every branch push.
+   Still outstanding: enable **preview deployments**, so the typecheck and build
+   Vercel already runs happen before merge rather than after; and add
+   browser/API integration coverage for sign-in denial, role boundaries, project
+   isolation, task moves, uploads, and notification-outbox retry. Adding
+   `format:check` to CI needs a repository-wide Prettier commit first — 148
+   files are not currently clean.
 3. **Observability and alerting.** Emit structured logs with request IDs,
    capture unhandled errors, and monitor readiness, database connectivity, S3,
    and email delivery failures. Alert on a growing pending/failed notification
