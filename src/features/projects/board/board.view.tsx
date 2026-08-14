@@ -32,7 +32,9 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { UserAvatar } from "@/components/user-avatar";
+import type { WipPolicy } from "@/lib/constants";
 import { cn } from "@/lib/utils";
+import { showsWipWarning } from "@/lib/wip-policy";
 
 import { useBoard, useMoveTask } from "./board.api";
 import type { BoardColumn, TaskCard } from "./board.types";
@@ -61,6 +63,7 @@ export function BoardView({
   // Memoized so the identity is stable: a bare `data?.columns ?? []` creates a
   // new array every render and would invalidate the lookup map below each time.
   const columns = useMemo(() => data?.columns ?? [], [data]);
+  const wipPolicy = data?.wip_policy ?? "WARN";
 
   const taskById = useMemo(() => {
     const map = new Map<string, TaskCard>();
@@ -159,6 +162,7 @@ export function BoardView({
             column={column}
             projectId={projectId}
             canEdit={canEdit}
+            wipPolicy={wipPolicy}
           />
         ))}
       </div>
@@ -174,13 +178,27 @@ function Column({
   column,
   projectId,
   canEdit,
+  wipPolicy,
 }: {
   column: BoardColumn;
   projectId: string;
   canEdit: boolean;
+  wipPolicy: WipPolicy;
 }) {
-  const overLimit =
-    column.wip_limit !== null && column.tasks.length > column.wip_limit;
+  const check = {
+    policy: wipPolicy,
+    limit: column.wip_limit,
+    occupancy: column.tasks.length,
+  };
+  const overLimit = showsWipWarning(check);
+  // At the limit but not over it: worth showing under ENFORCE, because the next
+  // card is the one the server will refuse.
+  const atLimit =
+    wipPolicy === "ENFORCE" &&
+    column.wip_limit !== null &&
+    column.tasks.length === column.wip_limit;
+  // A disabled policy leaves the limit as a note on the column, not a target.
+  const showsLimit = wipPolicy !== "DISABLED" && column.wip_limit !== null;
 
   return (
     <section className="bg-secondary/50 flex w-[19rem] shrink-0 flex-col rounded-xl">
@@ -197,16 +215,20 @@ function Column({
             "tnum ml-auto rounded-full px-2 py-0.5 text-xs",
             overLimit
               ? "bg-danger-bg text-danger font-semibold"
-              : "text-muted-foreground bg-card",
+              : atLimit
+                ? "bg-warning-bg text-warning font-semibold"
+                : "text-muted-foreground bg-card",
           )}
           title={
-            column.wip_limit !== null
-              ? `WIP limit ${column.wip_limit}`
+            showsLimit
+              ? wipPolicy === "ENFORCE"
+                ? `WIP limit ${column.wip_limit} — enforced, further tasks are refused`
+                : `WIP limit ${column.wip_limit}`
               : `${column.tasks.length} task(s)`
           }
         >
           {column.tasks.length}
-          {column.wip_limit !== null && ` / ${column.wip_limit}`}
+          {showsLimit && ` / ${column.wip_limit}`}
         </span>
       </header>
 

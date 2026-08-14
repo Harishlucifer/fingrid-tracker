@@ -173,6 +173,12 @@ model Project {
   status      String  @default("ACTIVE") @db.VarChar(32)
   color       String? @db.VarChar(16)
 
+  // DISABLED | WARN | ENFORCE — what TaskStatus.wip_limit actually does here.
+  // Defaults to WARN because that is what the board already did before the
+  // server read the limit at all: existing projects keep their behaviour and a
+  // lead opts in to enforcement. See WIP_POLICIES in src/lib/constants.ts.
+  wipPolicy   String  @default("WARN") @map("wip_policy") @db.VarChar(32)
+
   ownerId String @map("owner_id") @db.Char(36)
 
   // Monotonic counter behind Task.number. Incremented inside the same

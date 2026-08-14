@@ -32,6 +32,24 @@ export const projectStatusSchema = z.enum(PROJECT_STATUSES);
 export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
 
 /**
+ * What a column's `wip_limit` actually *does*, chosen per project.
+ *
+ *  * `DISABLED` — limits are ignored; the board shows a plain task count.
+ *  * `WARN` — the board flags an over-full column, the server still allows the
+ *    move. This is what the product did before the policy existed.
+ *  * `ENFORCE` — the server refuses a move that would breach the limit.
+ *
+ * The default is `WARN`, deliberately: it is the behaviour every existing
+ * project already had, so adding this column changes nothing until a lead opts
+ * in. A default of `ENFORCE` would start rejecting moves on boards whose limits
+ * were only ever decorative.
+ */
+export const WIP_POLICIES = ["DISABLED", "WARN", "ENFORCE"] as const;
+export const wipPolicySchema = z.enum(WIP_POLICIES);
+export type WipPolicy = (typeof WIP_POLICIES)[number];
+export const DEFAULT_WIP_POLICY: WipPolicy = "WARN";
+
+/**
  * Board-column semantics, in workflow order — the overall board renders its
  * columns in exactly this sequence.
  *

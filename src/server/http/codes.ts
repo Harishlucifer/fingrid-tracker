@@ -25,6 +25,10 @@ export const ErrorCodes = {
   NOT_FOUND: "RESOURCE_001",
   CONFLICT: "RESOURCE_002",
 
+  // Board policy
+  /** Destination column is at its WIP limit and the project enforces it. */
+  WIP_LIMIT_REACHED: "BOARD_001",
+
   // Uploads
   UPLOAD_TOO_LARGE: "UPLOAD_001",
   UPLOAD_MIME_REJECTED: "UPLOAD_002",

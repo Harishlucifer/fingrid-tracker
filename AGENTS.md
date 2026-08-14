@@ -166,6 +166,24 @@ or a prisma-free module.
 - Task numbers (`PMT-42`) increment `project.taskSeq` inside the same
   transaction as the insert, or concurrent creates collide on
   `uq_task_project_number`.
+- Board columns are editable at `…/projects/:id/statuses` and need **MANAGE**,
+  not EDIT — they define the workflow everyone else works inside. Two couplings
+  to respect: a column's `category` drives `task.completed_at`, so changing it
+  re-stamps the tasks already there in the same transaction (otherwise the board
+  and every report disagree); and `task.status_id` has no `ON DELETE`, so a
+  column cannot be dropped while **any** row references it — soft-deleted tasks
+  included. Deletes therefore take `?move_to=`. Re-ordering sends the whole new
+  order, not one move, so concurrent drags cannot interleave.
+- WIP limits are a **server** rule, chosen per project by `project.wip_policy`
+  (`DISABLED` / `WARN` / `ENFORCE`, default `WARN` — what the board did when the
+  limit was decorative). The predicate is `src/lib/wip-policy.ts`, prisma-free
+  and unit-tested; `assertWipAllows` in `task.service.ts` applies it on **all
+  four** paths that can place a task in a column — create, update, board move,
+  category move — because the board is not the only door. Two rules that are
+  easy to break: the moving task is excluded from the occupancy count, and a
+  same-column reorder is never checked, so reaching a limit caps a column
+  instead of freezing it. Counting then writing is not atomic, so a genuine race
+  can leave a column one over; the next move is refused.
 - `next-auth` is pinned to an exact beta. Do not float it; betas have shipped
   breaking config changes.
 

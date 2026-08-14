@@ -1,3 +1,5 @@
+import type { StatusCategory, WipPolicy } from "@/lib/constants";
+
 import type { UserRef } from "../list/list.types";
 
 export type TaskCard = {
@@ -33,7 +35,23 @@ export type BoardColumn = {
   tasks: TaskCard[];
 };
 
-export type Board = { columns: BoardColumn[] };
+export type Board = {
+  /** DISABLED | WARN | ENFORCE — see WIP_POLICIES. Decides what a full column means. */
+  wip_policy: WipPolicy;
+  columns: BoardColumn[];
+};
+
+/** A board column as the settings screen sees it — the board's own view is `BoardColumn`. */
+export type ProjectColumn = {
+  id: string;
+  name: string;
+  category: StatusCategory;
+  position: number;
+  color: string | null;
+  wip_limit: number | null;
+  /** Live tasks only. Zero does not guarantee the column can be deleted: soft-deleted tasks still hold the foreign key. */
+  task_count: number;
+};
 
 export type ProjectDetail = {
   id: string;
@@ -44,16 +62,10 @@ export type ProjectDetail = {
   color: string | null;
   start_date: string | null;
   end_date: string | null;
+  wip_policy: WipPolicy;
   created_at: string;
   owner: UserRef;
-  statuses: {
-    id: string;
-    name: string;
-    category: string;
-    position: number;
-    color: string | null;
-    wip_limit: number | null;
-  }[];
+  statuses: ProjectColumn[];
   members: { id: string; role: string; user: UserRef }[];
 };
 

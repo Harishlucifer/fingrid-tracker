@@ -28,6 +28,9 @@ import { PROJECT_ROLES } from "@/lib/constants";
 import { projectKey, useProject } from "../board/board.api";
 import type { UserRef } from "../list/list.types";
 
+import { ColumnsCard } from "./columns-card";
+import { ProjectDetailsCard } from "./project-details-card";
+
 export function ProjectSettingsView({
   projectId,
   canManage,
@@ -79,6 +82,8 @@ export function ProjectSettingsView({
 
   return (
     <div className="max-w-3xl space-y-6">
+      <ProjectDetailsCard project={project} canManage={canManage} />
+
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Members</CardTitle>
@@ -173,31 +178,7 @@ export function ProjectSettingsView({
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Board columns</CardTitle>
-          <CardDescription>
-            A task entering a DONE-category column is marked complete, which is
-            what the burndown and throughput reports measure.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ul className="divide-y">
-            {project.statuses.map((status) => (
-              <li key={status.id} className="flex items-center gap-3 py-2.5">
-                <span
-                  className="size-2.5 shrink-0 rounded-full"
-                  style={{ backgroundColor: status.color ?? "var(--color-n400)" }}
-                />
-                <span className="flex-1 text-sm">{status.name}</span>
-                <Badge variant="outline" className="text-[10px]">
-                  {status.category}
-                </Badge>
-              </li>
-            ))}
-          </ul>
-        </CardContent>
-      </Card>
+      <ColumnsCard project={project} canManage={canManage} />
     </div>
   );
 }

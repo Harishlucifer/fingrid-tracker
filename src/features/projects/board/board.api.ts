@@ -74,6 +74,7 @@ export function useMoveTask(projectId: string) {
       if (!previous) return { previous };
 
       const next: Board = {
+        ...previous,
         columns: previous.columns.map((column) => ({
           ...column,
           tasks: [...column.tasks],

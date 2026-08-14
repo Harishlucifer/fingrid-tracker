@@ -11,18 +11,22 @@ import {
   rebalancedPositions,
 } from "@/lib/board-position";
 import {
+  DEFAULT_WIP_POLICY,
   STATUS_CATEGORIES,
   statusCategorySchema,
   taskPrioritySchema,
   taskTypeSchema,
+  type WipPolicy,
 } from "@/lib/constants";
+import { breachesWipLimit, wipLimitMessage } from "@/lib/wip-policy";
 import type { AuthCtx, ProjectAuthCtx } from "@/server/auth/guards";
 import { prisma } from "@/server/db/prisma";
 import { enqueueTaskAssigned } from "@/server/notifications/dispatch";
-import { badRequest, notFound } from "@/server/http/errors";
+import { AppError, badRequest, notFound } from "@/server/http/errors";
+import { ErrorCodes } from "@/server/http/codes";
 import { buildMeta, type Pagination } from "@/server/http/pagination";
 
-import { diffPayload, recordActivity } from "./activity.service";
+import { type Db, diffPayload, recordActivity } from "./activity.service";
 
 export const createTaskSchema = z.object({
   projectId: z.string().min(1),
@@ -228,7 +232,11 @@ export async function listTasks(
 
 /** Every live task in a project, grouped by column — the board query. */
 export async function getBoard(projectId: string) {
-  const [statuses, tasks] = await Promise.all([
+  const [project, statuses, tasks] = await Promise.all([
+    prisma.project.findUnique({
+      where: { id: projectId },
+      select: { wipPolicy: true },
+    }),
     prisma.taskStatus.findMany({
       where: { projectId },
       orderBy: { position: "asc" },
@@ -255,6 +263,9 @@ export async function getBoard(projectId: string) {
   }
 
   return {
+    // The board needs the policy, not just the limits: "4 / 3" means something
+    // different when the server would have refused the fourth card.
+    wip_policy: project?.wipPolicy ?? DEFAULT_WIP_POLICY,
     columns: statuses.map((status) => ({
       id: status.id,
       name: status.name,
@@ -306,6 +317,10 @@ export async function createTask(
   // The number and the row must be allocated together, or two concurrent
   // creates collide on uq_task_project_number.
   const created = await prisma.$transaction(async (tx) => {
+    // Checked before the counter moves, so a refused create does not burn a
+    // task number. There is no task to exclude from the count yet.
+    await assertWipAllows(tx, ctx.projectId, status.id, null);
+
     const project = await tx.project.update({
       where: { id: ctx.projectId },
       data: { taskSeq: { increment: 1 } },
@@ -398,6 +413,9 @@ export async function updateTask(
       select: { category: true },
     });
     if (!status) throw badRequest("Unknown status for this project.");
+    // Editing a task's status from the detail screen is the same admission as a
+    // board drag, so it answers to the same policy.
+    await assertWipAllows(prisma, ctx.projectId, input.statusId, ctx.taskId);
     completedAt = resolveCompletedAt(status.category, before.completedAt);
   }
 
@@ -590,6 +608,13 @@ export async function moveTask(
   const completedAt = resolveCompletedAt(status.category, task.completedAt);
 
   await prisma.$transaction(async (tx) => {
+    // Only when the task actually changes column. Reordering inside a column
+    // that is already at (or over) its limit must stay possible — otherwise
+    // hitting the limit would freeze the column instead of capping it.
+    if (task.statusId !== status.id) {
+      await assertWipAllows(tx, ctx.projectId, status.id, ctx.taskId);
+    }
+
     if (!needsRebalance(candidate, before, after)) {
       await tx.task.update({
         where: { id: ctx.taskId },
@@ -691,6 +716,10 @@ export async function moveTaskToCategory(
       `This project has no ${input.category} column, so the task cannot be moved there.`,
     );
   }
+
+  // The cross-project board is a second door into the same column, and the
+  // early return above means this is always a genuine change of column.
+  await assertWipAllows(prisma, ctx.projectId, target.id, ctx.taskId);
 
   const last = await prisma.task.findFirst({
     where: {
@@ -876,4 +905,64 @@ async function assertSprintBelongs(
     select: { id: true },
   });
   if (!sprint) throw badRequest("That sprint does not belong to this project.");
+}
+
+/**
+ * Refuse to put a task into a column that is at its WIP limit.
+ *
+ * Called from every path that can place a task in a column — create, update,
+ * board move, and category move — because the board is not the only door: the
+ * whole point of the policy is that the API cannot be used to get around it.
+ *
+ * `movingTaskId` is excluded from the occupancy count, so a task already in the
+ * destination is being reordered rather than admitted and is never blocked. Pass
+ * `null` when creating, where there is no such task yet.
+ *
+ * Callers inside a transaction should pass `tx`, which narrows the window
+ * between counting and writing. It does not close it: MySQL will not stop two
+ * concurrent moves from each seeing room for one, so a column can end up one
+ * over its limit under a genuine race. Closing that needs row locks over the
+ * whole column on every move, which costs more than it is worth here — the next
+ * move is refused, and the board shows the overflow.
+ */
+async function assertWipAllows(
+  db: Db,
+  projectId: string,
+  statusId: string,
+  movingTaskId: string | null,
+) {
+  const [project, status] = await Promise.all([
+    db.project.findUnique({
+      where: { id: projectId },
+      select: { wipPolicy: true },
+    }),
+    db.taskStatus.findFirst({
+      where: { id: statusId, projectId },
+      select: { name: true, wipLimit: true },
+    }),
+  ]);
+
+  // A missing status is the caller's problem to report; every caller has
+  // already resolved and validated one by this point.
+  if (!project || !status) return;
+  if (status.wipLimit === null) return;
+
+  const policy = project.wipPolicy as WipPolicy;
+  if (policy !== "ENFORCE") return;
+
+  const occupancy = await db.task.count({
+    where: {
+      statusId,
+      deletedAt: null,
+      ...(movingTaskId ? { id: { not: movingTaskId } } : {}),
+    },
+  });
+
+  if (breachesWipLimit({ policy, limit: status.wipLimit, occupancy })) {
+    throw new AppError(
+      409,
+      ErrorCodes.WIP_LIMIT_REACHED,
+      wipLimitMessage(status.name, status.wipLimit),
+    );
+  }
 }
