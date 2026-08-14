@@ -1,52 +1,12 @@
-# Pull-request gates.
-#
-# Scope is deliberately the half Vercel does not cover. The deploy already runs
-# `prisma generate && next build`, and on Next 16 `next build` type-checks by
-# default, so build and typecheck are gated there — but only after a commit has
-# landed, and never for lint or the Vitest suite.
-#
-# `typecheck` is repeated here anyway: a red check on the pull request is a much
-# faster read than a deploy log, and it costs seconds.
-#
-# `build` is NOT repeated. It would need the DB_* variables present — `prisma.ts`
-# builds the client at module scope and `next build` evaluates every route module
-# while collecting page data — which means either dummy credentials that prove
-# nothing or real ones in CI. Vercel builds with the real environment already.
-#
-# `format:check` is deliberately absent. The repository is not currently
-# Prettier-clean (148 files as of this commit), so the step would fail on
-# pre-existing code from its first run. Adding it needs a formatting commit of
-# its own — a diff that should not be buried in a feature branch.
-#
-# Pull requests only, not every push. Bitbucket's free tier allows 50 build
-# minutes a month and this step costs roughly three, so gating every branch push
-# would exhaust the budget in a fortnight. If the plan changes, add a
-# `branches: main:` section.
-
-image: node:24
-
-definitions:
-  caches:
-    # `npm ci` is most of the wall time; caching the download cache roughly
-    # halves it, which matters directly against the monthly minute budget.
-    npmcache: ~/.npm
-
 pipelines:
-  pull-requests:
-    "**":
+  branches:
+    main:
       - step:
-          name: Lint, typecheck, test
-          caches:
-            - npmcache
+          name: Sync GitHub Mirror
+          image: node:20.5.0
+          clone:
+            enabled: false
           script:
-            # `postinstall` runs `prisma generate`, which the typecheck needs:
-            # the generated client is gitignored, so a clean checkout has no
-            # `@/generated/prisma/client` until this step. Generation itself
-            # needs no database — `prisma.config.ts` omits the datasource when
-            # DB_* is absent.
-            - npm ci
-            - npm run lint
-            - npm run typecheck
-            # Unit tests only, by design: everything under tests/ is prisma-free
-            # and needs no database. Integration coverage is tracked separately.
-            - npm run test
+            - git clone --bare git@bitbucket.org:sreedhar_ramasamy/fingrid-tracker.git
+            - cd fingrid-tracker.git
+            - git push --mirror git@github.com:Harishlucifer/fingrid-tracker.git
