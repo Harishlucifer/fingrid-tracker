@@ -17,10 +17,17 @@ export function LoginDenialNotice({ error }: { error?: string }) {
   return (
     <div
       role="alert"
-      className="border-danger/30 bg-danger-bg text-danger mb-6 flex gap-3 rounded-lg border px-4 py-3 text-sm"
+      className="border-danger/30 bg-danger-bg mt-6 flex gap-3 rounded-xl border px-4 py-3.5"
     >
-      <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-      <p className="leading-relaxed">{message}</p>
+      <span className="bg-danger/10 text-danger flex size-7 shrink-0 items-center justify-center rounded-lg">
+        <AlertTriangle className="size-4" aria-hidden="true" />
+      </span>
+      <div>
+        <p className="text-danger text-sm font-semibold">
+          We couldn&apos;t sign you in
+        </p>
+        <p className="text-danger mt-1 text-xs leading-relaxed">{message}</p>
+      </div>
     </div>
   );
 }
@@ -39,7 +46,7 @@ function resolveMessage(error: string): string {
     case "OAuthAccountNotLinked":
       return "That email is already registered through a different sign-in method.";
     case "Configuration":
-      return "Sign-in is misconfigured. AUTH_GOOGLE_ID and AUTH_GOOGLE_SECRET may be missing — check the server logs.";
+      return "Sign-in is temporarily unavailable. Contact your workspace administrator if the problem continues.";
     default:
       return "Sign-in failed. Please try again, or contact an administrator if it keeps happening.";
   }

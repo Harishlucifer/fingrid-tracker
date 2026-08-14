@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { auth, signIn } from "@/server/auth/config";
 
 import { LoginDenialNotice } from "./login-denial-notice";
+import { LoginSubmitButton } from "./login-submit-button";
 
 export const metadata = { title: "Sign in · Inforvio PM" };
 
@@ -34,78 +35,206 @@ export default async function LoginPage({
   }
 
   return (
-    <main className="flex min-h-full flex-1">
+    <main className="bg-background relative flex min-h-full flex-1 overflow-x-clip">
       {/* Form pane */}
-      <div className="flex flex-1 items-center justify-center px-5 py-12">
-        <div className="w-full max-w-sm">
-          <div className="mb-8">
-            <span className="bg-primary text-primary-foreground mb-5 flex size-11 items-center justify-center rounded-xl text-sm font-bold">
+      <section className="relative z-10 flex min-w-0 flex-1 items-center justify-center px-4 py-6 sm:px-8 sm:py-10 lg:px-10">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 overflow-hidden"
+        >
+          <div className="bg-accent/10 absolute -top-32 -left-28 size-80 rounded-full blur-3xl" />
+          <div className="bg-primary/5 absolute -right-28 -bottom-40 size-96 rounded-full blur-3xl" />
+        </div>
+
+        <div className="bg-card shadow-raised relative w-full max-w-md rounded-[1.75rem] border p-6 sm:p-8">
+          <div className="flex items-center gap-3">
+            <span
+              aria-hidden="true"
+              className="bg-primary text-primary-foreground flex size-11 items-center justify-center rounded-xl text-sm font-bold shadow-sm"
+            >
               PM
             </span>
-            <h1 className="text-2xl font-semibold tracking-tight">
-              Sign in to Inforvio PM
+            <div>
+              <p className="text-sm font-semibold tracking-tight">Inforvio</p>
+              <p className="text-muted-foreground text-xs">
+                Project management workspace
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-9">
+            <p className="text-accent text-xs font-semibold tracking-[0.16em] uppercase">
+              Welcome back
+            </p>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight">
+              Sign in to your workspace
             </h1>
-            <p className="text-muted-foreground mt-2 text-sm leading-relaxed">
-              Use your work Google account. Access is limited to approved email
-              domains.
+            <p className="text-muted-foreground mt-3 text-sm leading-relaxed">
+              Continue with your approved work Google account. No separate
+              password required.
             </p>
           </div>
 
           <LoginDenialNotice error={error} />
 
-          <form action={signInWithGoogle}>
-            <button
-              type="submit"
-              className="border-input bg-card hover:bg-secondary shadow-card flex w-full items-center justify-center gap-3 rounded-lg border px-4 py-3 text-sm font-medium transition-colors focus-visible:outline-none"
-            >
-              <GoogleMark />
-              Continue with Google
-            </button>
+          <form action={signInWithGoogle} className="mt-7">
+            <LoginSubmitButton />
           </form>
 
-          <p className="text-muted-foreground mt-8 text-xs leading-relaxed">
-            If your account is refused, your email domain has not been approved
-            yet — ask an administrator to add it.
-          </p>
+          <div className="bg-secondary/70 mt-6 flex items-start gap-3 rounded-xl px-4 py-3.5">
+            <ShieldCheck
+              className="text-accent mt-0.5 size-4 shrink-0"
+              aria-hidden="true"
+            />
+            <p className="text-muted-foreground text-xs leading-relaxed">
+              <span className="text-foreground font-medium">
+                Secure access.
+              </span>{" "}
+              Google verifies your identity; your workspace administrator
+              controls access.
+            </p>
+          </div>
+
+          {!error && (
+            <p className="text-muted-foreground mt-5 text-center text-xs leading-relaxed">
+              Need access? Ask your workspace administrator to approve your
+              email domain.
+            </p>
+          )}
         </div>
-      </div>
+      </section>
 
       {/* Brand pane — decorative, so it is hidden from assistive tech and small screens. */}
       <aside
         aria-hidden="true"
-        className="bg-primary text-primary-foreground relative hidden w-1/2 max-w-2xl flex-col justify-center overflow-hidden px-14 lg:flex"
+        className="relative hidden w-[46%] min-w-[30rem] shrink-0 overflow-hidden bg-[#012756] text-white lg:flex xl:w-[48%]"
       >
-        {/* Soft radial wash; pure CSS, no asset to load. */}
         <div
-          className="pointer-events-none absolute inset-0 opacity-70"
+          className="pointer-events-none absolute inset-0 opacity-80"
           style={{
             background:
-              "radial-gradient(60rem 40rem at 15% 20%, rgb(49 133 255 / 0.45), transparent 60%), radial-gradient(40rem 30rem at 85% 85%, rgb(91 155 255 / 0.28), transparent 60%)",
+              "radial-gradient(55rem 42rem at 15% 15%, rgb(49 133 255 / 0.5), transparent 58%), radial-gradient(42rem 36rem at 90% 88%, rgb(91 155 255 / 0.3), transparent 62%)",
+          }}
+        />
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.08]"
+          style={{
+            backgroundImage:
+              "linear-gradient(rgb(255 255 255) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255) 1px, transparent 1px)",
+            backgroundSize: "48px 48px",
+            maskImage:
+              "linear-gradient(to bottom, transparent, black 18%, black 82%, transparent)",
           }}
         />
 
-        <div className="relative">
-          <p className="text-sm font-medium tracking-wide text-white/70 uppercase">
-            Inforvio
-          </p>
-          <p className="mt-3 max-w-md text-3xl leading-tight font-semibold">
-            Plan the work, track the work, see where it stands.
-          </p>
+        <div className="relative flex w-full items-center px-10 py-10 xl:px-16 xl:py-12 2xl:px-20">
+          <div className="mx-auto w-full max-w-2xl">
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-medium text-white/80 backdrop-blur-sm">
+              <KanbanSquare className="size-3.5" />
+              Inforvio project management
+            </div>
 
-          <ul className="mt-10 space-y-4 text-sm text-white/85">
-            <Feature icon={KanbanSquare}>
-              Kanban boards, sprints and a groomed backlog
-            </Feature>
-            <Feature icon={CheckCircle2}>
-              Comments, mentions, attachments and time tracking
-            </Feature>
-            <Feature icon={ShieldCheck}>
-              Google sign-in restricted to domains you approve
-            </Feature>
-          </ul>
+            <h2 className="mt-7 max-w-xl text-4xl leading-[1.1] font-semibold tracking-tight xl:text-5xl">
+              From backlog to done, everyone stays in sync.
+            </h2>
+            <p className="mt-4 max-w-xl text-sm leading-relaxed text-white/70 xl:text-base">
+              Plan projects, protect focus, and keep the next decision visible
+              to the whole team.
+            </p>
+
+            <BoardPreview />
+
+            <ul className="mt-6 hidden grid-cols-3 gap-3 text-xs text-white/75 xl:grid">
+              <Feature icon={KanbanSquare}>Clear workflows</Feature>
+              <Feature icon={CheckCircle2}>Visible progress</Feature>
+              <Feature icon={ShieldCheck}>Controlled access</Feature>
+            </ul>
+          </div>
         </div>
       </aside>
     </main>
+  );
+}
+
+const BOARD_COLUMNS = [
+  {
+    label: "TO DO",
+    count: 4,
+    accent: "bg-[#5b9bff]",
+    tasks: ["Finalize sprint scope", "Review API contract"],
+  },
+  {
+    label: "IN PROGRESS",
+    count: 2,
+    accent: "bg-[#f6b94a]",
+    tasks: ["Polish login experience", "Prepare release notes"],
+  },
+  {
+    label: "DONE",
+    count: 6,
+    accent: "bg-[#45d49a]",
+    tasks: ["Confirm domain access", "Triage customer feedback"],
+  },
+] as const;
+
+function BoardPreview() {
+  return (
+    <div className="mt-7 rounded-2xl border border-white/15 bg-white/[0.08] p-3.5 shadow-2xl shadow-black/15 backdrop-blur-md xl:mt-8 xl:p-4">
+      <div className="flex items-center justify-between gap-4 border-b border-white/10 px-1 pb-3">
+        <div>
+          <p className="text-xs font-semibold">Website refresh</p>
+          <p className="mt-0.5 text-[10px] text-white/50">Release workspace</p>
+        </div>
+        <span className="flex items-center gap-1.5 rounded-full bg-white/10 px-2 py-1 text-[10px] font-medium text-white/75">
+          <span className="size-1.5 rounded-full bg-[#45d49a]" />
+          Live
+        </span>
+      </div>
+
+      <div className="mt-3 grid grid-cols-3 gap-2.5">
+        {BOARD_COLUMNS.map((column) => (
+          <div key={column.label} className="min-w-0">
+            <div className="flex items-center gap-1.5 px-1 text-[9px] font-semibold tracking-[0.12em] text-white/55">
+              <span className={`size-1.5 rounded-full ${column.accent}`} />
+              <span className="truncate">{column.label}</span>
+              <span className="ml-auto text-white/35">{column.count}</span>
+            </div>
+
+            <div className="mt-2 space-y-2">
+              {column.tasks.map((task) => (
+                <div
+                  key={task}
+                  className="rounded-lg border border-white/10 bg-[#092f62]/80 px-2.5 py-2.5 shadow-sm"
+                >
+                  <p className="line-clamp-2 text-[10px] leading-snug font-medium text-white/85">
+                    {task}
+                  </p>
+                  <div className="mt-2 flex items-center justify-between">
+                    <span className="h-1 w-8 rounded-full bg-white/15">
+                      <span
+                        className={`block h-full rounded-full ${column.accent}`}
+                        style={{
+                          width:
+                            column.label === "DONE"
+                              ? "100%"
+                              : column.label === "IN PROGRESS"
+                                ? "62%"
+                                : "28%",
+                        }}
+                      />
+                    </span>
+                    <span className="flex -space-x-1">
+                      <span className="size-4 rounded-full border border-[#17467c] bg-[#5b9bff]" />
+                      <span className="size-4 rounded-full border border-[#17467c] bg-[#b9d2ff]" />
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -117,32 +246,11 @@ function Feature({
   children: React.ReactNode;
 }) {
   return (
-    <li className="flex items-start gap-3">
-      <Icon className="mt-0.5 size-4.5 shrink-0 text-white/60" />
-      <span className="leading-relaxed">{children}</span>
+    <li className="flex items-center gap-2">
+      <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-white/10">
+        <Icon className="size-3.5 text-white/70" />
+      </span>
+      <span className="leading-snug">{children}</span>
     </li>
-  );
-}
-
-function GoogleMark() {
-  return (
-    <svg className="size-5 shrink-0" viewBox="0 0 18 18" aria-hidden="true">
-      <path
-        fill="#4285F4"
-        d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.71-1.57 2.68-3.89 2.68-6.62Z"
-      />
-      <path
-        fill="#34A853"
-        d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.81.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.34A9 9 0 0 0 9 18Z"
-      />
-      <path
-        fill="#FBBC05"
-        d="M3.97 10.72a5.4 5.4 0 0 1 0-3.44V4.94H.96a9 9 0 0 0 0 8.12l3.01-2.34Z"
-      />
-      <path
-        fill="#EA4335"
-        d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.94l3.01 2.34C4.68 5.16 6.66 3.58 9 3.58Z"
-      />
-    </svg>
   );
 }
