@@ -18,7 +18,7 @@ export function ProjectTabs({ projectId }: { projectId: string }) {
   const pathname = usePathname();
 
   return (
-    <nav className="flex gap-1 overflow-x-auto border-b">
+    <nav className="bg-secondary/70 flex gap-1 overflow-x-auto rounded-xl p-1">
       {TABS.map((tab) => {
         const href = `/projects/${projectId}/${tab.segment}`;
         const active = pathname === href;
@@ -28,10 +28,10 @@ export function ProjectTabs({ projectId }: { projectId: string }) {
             key={tab.segment}
             href={href}
             className={cn(
-              "-mb-px border-b-2 px-3 py-2 text-sm whitespace-nowrap transition-colors",
+              "rounded-lg px-3 py-2 text-sm whitespace-nowrap transition-[background-color,color,box-shadow]",
               active
-                ? "border-accent text-foreground font-medium"
-                : "text-muted-foreground hover:text-foreground border-transparent",
+                ? "bg-card text-foreground font-medium shadow-sm"
+                : "text-muted-foreground hover:bg-card/60 hover:text-foreground",
             )}
           >
             {tab.label}

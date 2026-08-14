@@ -60,7 +60,11 @@ export default async function DashboardPage() {
         where: { mentionedUserId: ctx.userId, readAt: null },
       }),
       prisma.timeLog.aggregate({
-        where: { userId: ctx.userId, deletedAt: null, spentOn: { gte: weekAgo } },
+        where: {
+          userId: ctx.userId,
+          deletedAt: null,
+          spentOn: { gte: weekAgo },
+        },
         _sum: { minutes: true },
       }),
     ]);
@@ -98,7 +102,9 @@ export default async function DashboardPage() {
         members: {
           take: 5,
           select: {
-            user: { select: { id: true, name: true, email: true, image: true } },
+            user: {
+              select: { id: true, name: true, email: true, image: true },
+            },
           },
         },
         _count: { select: { tasks: { where: { deletedAt: null } } } },
@@ -152,13 +158,23 @@ export default async function DashboardPage() {
       </div>
 
       <div className="grid gap-5 lg:grid-cols-3">
-        <Card className="shadow-card lg:col-span-2">
+        <Card className="shadow-card rounded-2xl lg:col-span-2">
           <CardContent className="p-0">
-            <div className="flex items-center justify-between border-b px-4 py-3">
-              <h2 className="text-sm font-semibold">Assigned to you</h2>
+            <div className="flex items-center justify-between border-b px-5 py-4">
+              <div className="flex items-center gap-3">
+                <span className="bg-accent/10 text-accent flex size-9 items-center justify-center rounded-xl">
+                  <ListChecks className="size-4" aria-hidden="true" />
+                </span>
+                <div>
+                  <h2 className="text-sm font-semibold">Assigned to you</h2>
+                  <p className="text-muted-foreground text-xs">
+                    Your next open tasks
+                  </p>
+                </div>
+              </div>
               <Link
                 href="/my-work"
-                className="text-muted-foreground hover:text-foreground text-xs"
+                className="text-muted-foreground hover:text-accent text-xs font-medium transition-colors"
               >
                 View all
               </Link>
@@ -175,7 +191,7 @@ export default async function DashboardPage() {
                 {assigned.map((task) => (
                   <li
                     key={task.id}
-                    className="hover:bg-secondary/40 flex items-center gap-3 px-4 py-3 transition-colors"
+                    className="hover:bg-secondary/35 flex items-center gap-3 px-5 py-3.5 transition-colors"
                   >
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
@@ -210,13 +226,23 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="shadow-card">
+        <Card className="shadow-card rounded-2xl">
           <CardContent className="p-0">
-            <div className="flex items-center justify-between border-b px-4 py-3">
-              <h2 className="text-sm font-semibold">Projects</h2>
+            <div className="flex items-center justify-between border-b px-5 py-4">
+              <div className="flex items-center gap-3">
+                <span className="bg-accent/10 text-accent flex size-9 items-center justify-center rounded-xl">
+                  <FolderKanban className="size-4" aria-hidden="true" />
+                </span>
+                <div>
+                  <h2 className="text-sm font-semibold">Projects</h2>
+                  <p className="text-muted-foreground text-xs">
+                    Recently updated
+                  </p>
+                </div>
+              </div>
               <Link
                 href="/projects"
-                className="text-muted-foreground hover:text-foreground text-xs"
+                className="text-muted-foreground hover:text-accent text-xs font-medium transition-colors"
               >
                 All {projects}
               </Link>
@@ -234,7 +260,7 @@ export default async function DashboardPage() {
                   <li key={project.id}>
                     <Link
                       href={`/projects/${project.id}/board`}
-                      className="hover:bg-secondary/40 flex items-center gap-3 px-4 py-3 transition-colors"
+                      className="hover:bg-secondary/35 flex items-center gap-3 px-5 py-3.5 transition-colors"
                     >
                       <div className="min-w-0 flex-1">
                         <p className="text-muted-foreground font-mono text-[11px]">
@@ -254,7 +280,9 @@ export default async function DashboardPage() {
                             user={member.user}
                             size="xs"
                             className={
-                              index === 0 ? "ring-card ring-2" : "ring-card -ml-1.5 ring-2"
+                              index === 0
+                                ? "ring-card ring-2"
+                                : "ring-card -ml-1.5 ring-2"
                             }
                           />
                         ))}

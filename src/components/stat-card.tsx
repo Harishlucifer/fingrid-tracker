@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ArrowUpRight } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -34,16 +35,17 @@ export function StatCard({
   const body = (
     <Card
       className={cn(
-        "h-full shadow-card transition-all",
-        href && "hover:border-accent/40 hover:shadow-raised",
+        "shadow-card relative h-full rounded-2xl transition-all",
+        href &&
+          "group-hover:border-accent/40 group-hover:shadow-raised group-hover:-translate-y-0.5",
         isAlert && "border-danger/30",
       )}
     >
-      <CardContent className="flex items-start gap-3 p-4 sm:p-5">
+      <CardContent className="flex items-start gap-4 p-4 sm:p-5">
         {Icon && (
           <span
             className={cn(
-              "flex size-9 shrink-0 items-center justify-center rounded-lg",
+              "flex size-10 shrink-0 items-center justify-center rounded-xl",
               isAlert
                 ? "bg-danger-bg text-danger"
                 : tone === "success"
@@ -51,14 +53,14 @@ export function StatCard({
                   : "bg-secondary text-muted-foreground",
             )}
           >
-            <Icon className="size-4.5" />
+            <Icon className="size-4.5" aria-hidden="true" />
           </span>
         )}
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="text-muted-foreground text-xs font-medium">{label}</p>
           <p
             className={cn(
-              "tnum mt-0.5 text-2xl leading-none font-semibold",
+              "tnum mt-1 text-3xl leading-none font-semibold tracking-tight",
               isAlert && "text-danger",
             )}
           >
@@ -68,6 +70,12 @@ export function StatCard({
             <p className="text-muted-foreground mt-1.5 text-xs">{hint}</p>
           )}
         </div>
+        {href && (
+          <ArrowUpRight
+            className="text-muted-foreground/60 group-hover:text-accent size-4 shrink-0 transition-colors"
+            aria-hidden="true"
+          />
+        )}
       </CardContent>
     </Card>
   );
@@ -75,7 +83,7 @@ export function StatCard({
   if (!href) return body;
 
   return (
-    <Link href={href} className="rounded-xl focus-visible:outline-none">
+    <Link href={href} className="group block rounded-2xl">
       {body}
     </Link>
   );

@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { FolderKanban, Loader2, Plus } from "lucide-react";
+import { ArrowUpRight, FolderKanban, Loader2, Plus } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -33,7 +33,10 @@ const formSchema = z.object({
     .string()
     .min(2, "At least 2 characters")
     .max(16)
-    .regex(/^[A-Za-z][A-Za-z0-9]*$/, "Letters and digits, starting with a letter"),
+    .regex(
+      /^[A-Za-z][A-Za-z0-9]*$/,
+      "Letters and digits, starting with a letter",
+    ),
   name: z.string().min(1, "Name is required").max(255),
   description: z.string().max(5000).optional(),
 });
@@ -54,9 +57,9 @@ export function ProjectsListView({ canCreate }: { canCreate: boolean }) {
 
       {isLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Skeleton className="h-40" />
-          <Skeleton className="h-40" />
-          <Skeleton className="h-40" />
+          <Skeleton className="h-52 rounded-2xl" />
+          <Skeleton className="h-52 rounded-2xl" />
+          <Skeleton className="h-52 rounded-2xl" />
         </div>
       ) : projects.length === 0 ? (
         <Card className="shadow-card">
@@ -86,24 +89,37 @@ export function ProjectsListView({ canCreate }: { canCreate: boolean }) {
               <Link
                 key={project.id}
                 href={`/projects/${project.id}/board`}
-                className="group rounded-xl focus-visible:outline-none"
+                className="group block rounded-2xl"
               >
-                <Card className="shadow-card group-hover:border-accent/40 group-hover:shadow-raised h-full transition-all">
-                  <CardContent className="flex h-full flex-col gap-3 p-5">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="text-muted-foreground font-mono text-[11px] tracking-wide">
-                          {project.key}
-                        </p>
+                <Card className="shadow-card group-hover:border-accent/40 group-hover:shadow-raised relative h-full rounded-2xl transition-all group-hover:-translate-y-0.5">
+                  <span
+                    aria-hidden="true"
+                    className="from-accent via-chart-1 absolute inset-x-0 top-0 h-1 bg-linear-to-r to-transparent"
+                  />
+                  <CardContent className="flex h-full flex-col gap-4 p-5 pt-6">
+                    <div className="flex items-start gap-3">
+                      <span className="bg-accent/10 text-accent flex size-10 shrink-0 items-center justify-center rounded-xl">
+                        <FolderKanban className="size-4.5" aria-hidden="true" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="text-muted-foreground font-mono text-[11px] tracking-wide">
+                            {project.key}
+                          </p>
+                          {project.status !== "ACTIVE" && (
+                            <Badge
+                              variant="secondary"
+                              className="shrink-0 text-[10px]"
+                            >
+                              {project.status}
+                            </Badge>
+                          )}
+                        </div>
                         <h2 className="group-hover:text-accent mt-0.5 truncate font-semibold transition-colors">
                           {project.name}
                         </h2>
                       </div>
-                      {project.status !== "ACTIVE" && (
-                        <Badge variant="secondary" className="shrink-0 text-[10px]">
-                          {project.status}
-                        </Badge>
-                      )}
+                      <ArrowUpRight className="text-muted-foreground/60 group-hover:text-accent size-4 shrink-0 transition-colors" />
                     </div>
 
                     {project.description && (
@@ -137,9 +153,9 @@ export function ProjectsListView({ canCreate }: { canCreate: boolean }) {
                         />
                       </div>
 
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground text-[11px]">
-                          {project.owner.name ?? project.owner.email}
+                      <div className="border-border/70 flex items-center justify-between border-t pt-3">
+                        <span className="text-muted-foreground min-w-0 truncate text-[11px]">
+                          Owner · {project.owner.name ?? project.owner.email}
                         </span>
                         <Badge variant="outline" className="text-[10px]">
                           {project.my_access}

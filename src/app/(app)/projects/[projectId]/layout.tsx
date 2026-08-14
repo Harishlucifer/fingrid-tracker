@@ -23,33 +23,36 @@ export default async function ProjectLayout({
 
   return (
     <div className="space-y-5">
-      <header className="space-y-3">
+      <header className="bg-card shadow-card space-y-4 rounded-2xl border p-5 sm:p-6">
         <div className="flex flex-wrap items-center gap-2">
           <Link
             href="/projects"
-            className="text-muted-foreground hover:text-foreground text-sm"
+            className="text-muted-foreground hover:text-accent text-xs font-medium transition-colors"
           >
             Projects
           </Link>
-          <span className="text-muted-foreground text-sm">/</span>
-          <span className="text-muted-foreground font-mono text-sm">
+          <span className="text-muted-foreground/60 text-xs">/</span>
+          <span className="bg-secondary text-muted-foreground rounded-md px-2 py-0.5 font-mono text-[11px]">
             {project.key}
           </span>
         </div>
 
-        <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">
+            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
               {project.name}
             </h1>
             {project.description && (
-              <p className="text-muted-foreground mt-1 max-w-2xl text-sm">
+              <p className="text-muted-foreground mt-2 max-w-2xl text-sm leading-relaxed">
                 {project.description}
               </p>
             )}
           </div>
-          <p className="text-muted-foreground text-xs">
-            Your access: <strong className="text-foreground">{ctx.access}</strong>
+          <p className="bg-secondary/70 text-muted-foreground rounded-full px-3 py-1.5 text-xs">
+            Your access ·{" "}
+            <strong className="text-foreground font-semibold">
+              {ctx.access}
+            </strong>
           </p>
         </div>
 
