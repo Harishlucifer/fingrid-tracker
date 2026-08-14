@@ -13,8 +13,15 @@
 
 import { cache } from "react";
 
+import type { NextRequest } from "next/server";
+
 import { ErrorCodes } from "@/server/http/codes";
-import { forbidden, notFound, unauthorized } from "@/server/http/errors";
+import {
+  AppError,
+  forbidden,
+  notFound,
+  unauthorized,
+} from "@/server/http/errors";
 import { prisma } from "@/server/db/prisma";
 import {
   atLeast,
@@ -22,6 +29,8 @@ import {
   effectiveProjectAccess,
   type AccessLevel,
 } from "@/lib/permissions";
+import { isAuthorizedCronRequest } from "@/lib/cron-auth";
+import { env } from "@/lib/env";
 import type { OrgRole } from "@/lib/constants";
 
 import { auth } from "./config";
@@ -153,4 +162,28 @@ export async function requireTaskAccess(
 
   const ctx = await requireProjectAccess(task.projectId, required);
   return { ...ctx, taskId: task.id };
+}
+
+/**
+ * Require the scheduled-job shared secret. Throws `AppError(401, AUTH_006)`.
+ *
+ * The one guard here that does not read a session, because a scheduler calls
+ * from outside any browser and has no cookie to present. It deliberately
+ * returns no `AuthCtx`: a scheduled job acts as nobody, so nothing it invokes
+ * may attribute work to a user or widen its reach through one.
+ *
+ * It lives in this file anyway, so that "every route handler takes a guard from
+ * guards.ts" stays literally true and this exception is visible next to the
+ * rules it is an exception to.
+ */
+export async function requireCronSecret(req: NextRequest): Promise<void> {
+  if (
+    !isAuthorizedCronRequest(req.headers.get("authorization"), env.cronSecret)
+  ) {
+    throw new AppError(
+      401,
+      ErrorCodes.AUTH_INVALID_CRON_SECRET,
+      "Invalid or missing scheduled-job credentials",
+    );
+  }
 }

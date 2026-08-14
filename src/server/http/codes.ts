@@ -14,6 +14,8 @@ export const ErrorCodes = {
   AUTH_MISSING_ROLE: "AUTH_003",
   AUTH_ACCOUNT_DISABLED: "AUTH_004",
   AUTH_NO_PROJECT_ACCESS: "AUTH_005",
+  /** Scheduled-job endpoints: missing or wrong shared secret. Never a session. */
+  AUTH_INVALID_CRON_SECRET: "AUTH_006",
 
   // Request shape
   VALIDATION_FAILED: "VALIDATION_001",

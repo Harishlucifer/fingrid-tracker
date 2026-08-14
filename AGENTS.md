@@ -130,6 +130,20 @@ Admin diagnostics: `GET /api/v1/admin/notifications` shows delivery state and
 counts; `POST` forces a flush, with `?reset_failed=true` to requeue rows that hit
 the attempt ceiling — the thing to call after fixing SES configuration.
 
+The outbox also needs a **clock**, because `after()` only runs as a side effect
+of a task or comment write: a row whose send failed would otherwise wait for the
+next such write, which over a quiet weekend never comes. `GET
+/api/cron/notifications` is that scheduled pass, wired up in `vercel.json`.
+It is the one endpoint not behind a session guard — a scheduler has no cookie —
+so it authenticates a shared secret instead (`CRON_SECRET`, sent by Vercel as
+`Authorization: Bearer`). `src/lib/cron-auth.ts` holds the comparison, is
+prisma-free and unit-tested, and **denies when the secret is unset**: an
+unconfigured deployment locks the endpoint rather than opening it. The
+`x-vercel-cron` header is not accepted as proof — it is not a secret, exactly
+like Google's `hd`. The scheduled pass deliberately does not reset `FAILED`
+rows; that stays the explicit admin action above, or the attempt ceiling would
+mean nothing.
+
 **Pure logic must not sit behind a Prisma import.** This bit me three times
 (`mentions.ts`, `month.ts`, `rules.ts`): a module that imports
 `@/server/db/prisma` cannot be unit-tested, because the client is constructed at

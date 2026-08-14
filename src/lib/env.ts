@@ -119,6 +119,16 @@ export const env = {
   get sesConfigurationSet() {
     return optional("SES_CONFIGURATION_SET");
   },
+
+  /**
+   * Shared secret for the scheduled-flush endpoint. Vercel Cron sends it as
+   * `Authorization: Bearer $CRON_SECRET` once the variable is set on the
+   * project. Optional here like everything else — an unset value denies every
+   * caller rather than opening the endpoint, which `cron-auth.ts` enforces.
+   */
+  get cronSecret() {
+    return optional("CRON_SECRET");
+  },
   /**
    * Absolute base URL used to build links in emails. Emails are read outside the
    * app, so a relative path is useless — this must be set for links to work.

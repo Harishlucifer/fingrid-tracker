@@ -1,0 +1,57 @@
+# Pull-request gates.
+#
+# Scope is deliberately the half Vercel does not cover. The deploy already runs
+# `prisma generate && next build`, and on Next 16 `next build` type-checks by
+# default, so build and typecheck are gated there — but only after a commit has
+# landed, and never for lint or the Vitest suite.
+#
+# `typecheck` is repeated here anyway: a red check on the pull request is a much
+# faster read than a deploy log, and it costs seconds.
+#
+# `build` is NOT repeated. It would need the DB_* variables present — `prisma.ts`
+# builds the client at module scope and `next build` evaluates every route module
+# while collecting page data — which means either dummy credentials that prove
+# nothing or real ones in CI. Vercel builds with the real environment already.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A new push makes an in-flight run for the same ref obsolete.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Lint, typecheck, test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      # `postinstall` runs `prisma generate`, which the typecheck needs: the
+      # generated client is gitignored, so a clean checkout has no
+      # `@/generated/prisma/client` until this step. Generation itself needs no
+      # database — `prisma.config.ts` omits the datasource when DB_* is absent.
+      - run: npm ci
+
+      - run: npm run lint
+
+      - run: npm run typecheck
+
+      # Unit tests only, by design: everything under tests/ is prisma-free and
+      # needs no database. Integration coverage is tracked separately.
+      - run: npm run test
+      # `format:check` is deliberately absent. The repository is not currently
+      # Prettier-clean (148 files as of this commit), so the step would fail on
+      # pre-existing code from its first run. Adding it needs a formatting
+      # commit of its own — a diff that should not be buried in a feature branch.
