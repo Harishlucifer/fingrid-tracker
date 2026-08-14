@@ -1,26 +1,27 @@
 "use client";
 
 import {
+  ArrowLeft,
+  CheckCircle2,
+  Clock3,
   Download,
+  FileText,
   Loader2,
+  MessageSquare,
   Paperclip,
   Pencil,
   Send,
   Trash2,
   Upload,
+  UserRound,
 } from "lucide-react";
 import Link from "next/link";
 import { useRef, useState } from "react";
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { DueDate, PriorityBadge, TypeBadge } from "@/components/task-meta";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -40,6 +41,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { UserAvatar, displayName } from "@/components/user-avatar";
 import { TASK_PRIORITIES, TASK_TYPES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
@@ -72,35 +74,81 @@ export function TaskDetailView({
 
   if (isLoading || !task) {
     return (
-      <div className="mx-auto max-w-5xl space-y-4">
-        <Skeleton className="h-8 w-64" />
-        <Skeleton className="h-40 w-full" />
+      <div className="mx-auto max-w-6xl space-y-5">
+        <Skeleton className="h-4 w-56" />
+        <div className="space-y-3 border-b pb-5">
+          <Skeleton className="h-5 w-40" />
+          <Skeleton className="h-9 w-3/5" />
+          <Skeleton className="h-6 w-96 max-w-full" />
+        </div>
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_20rem]">
+          <Skeleton className="h-72 w-full rounded-xl" />
+          <Skeleton className="h-[30rem] w-full rounded-xl" />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
-      <header className="space-y-2">
-        <div className="text-muted-foreground flex flex-wrap items-center gap-2 text-sm">
-          <Link href="/projects" className="hover:text-foreground">
-            Projects
-          </Link>
-          <span>/</span>
-          <Link
-            href={`/projects/${task.project.id}/board`}
-            className="hover:text-foreground"
-          >
-            {task.project.name}
-          </Link>
-          <span>/</span>
-          <span className="font-mono">{task.ref}</span>
+    <div className="mx-auto max-w-6xl space-y-5">
+      <nav aria-label="Breadcrumb">
+        <Link
+          href={`/projects/${task.project.id}/board`}
+          className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 text-xs font-medium transition-colors"
+        >
+          <ArrowLeft className="size-3.5" aria-hidden="true" />
+          {task.project.name} board
+        </Link>
+      </nav>
+
+      <header className="space-y-3 border-b pb-5">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-muted-foreground font-mono text-xs font-semibold tracking-wide">
+            {task.ref}
+          </span>
+          <StatusBadge
+            category={task.status.category}
+            name={task.status.name}
+          />
+          <TypeBadge type={task.type} />
+          <PriorityBadge priority={task.priority} />
         </div>
+
         <TaskTitle taskId={taskId} task={task} canEdit={canEdit} />
+
+        <div className="text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+          <span className="flex items-center gap-1.5">
+            {task.assignee ? (
+              <UserAvatar user={task.assignee} size="xs" />
+            ) : (
+              <span className="bg-secondary flex size-6 items-center justify-center rounded-full">
+                <UserRound className="size-3" aria-hidden="true" />
+              </span>
+            )}
+            <span className="text-foreground font-medium">
+              {task.assignee ? displayName(task.assignee) : "Unassigned"}
+            </span>
+          </span>
+          <DueDate dueDate={task.due_date} completedAt={task.completed_at} />
+          {task.estimate_minutes ? (
+            <span className="inline-flex items-center gap-1.5">
+              <Clock3 className="size-3.5" aria-hidden="true" />
+              {formatMinutes(task.estimate_minutes)} estimated
+            </span>
+          ) : null}
+          <span className="inline-flex items-center gap-1.5">
+            <MessageSquare className="size-3.5" aria-hidden="true" />
+            {task.comment_count} comments
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <Paperclip className="size-3.5" aria-hidden="true" />
+            {task.attachment_count} files
+          </span>
+        </div>
       </header>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="space-y-6 lg:col-span-2">
+      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_20rem]">
+        <main className="min-w-0 space-y-5">
           <DescriptionCard taskId={taskId} task={task} canEdit={canEdit} />
           <AttachmentsCard
             taskId={taskId}
@@ -112,18 +160,43 @@ export function TaskDetailView({
             canEdit={canEdit}
             currentUserId={currentUserId}
           />
-        </div>
+        </main>
 
-        <div className="space-y-6">
+        <aside className="order-first space-y-5 xl:sticky xl:top-6 xl:order-last">
           <PropertiesCard taskId={taskId} task={task} canEdit={canEdit} />
-          <TimeCard taskId={taskId} canEdit={canEdit} currentUserId={currentUserId} />
-        </div>
+          <TimeCard
+            taskId={taskId}
+            canEdit={canEdit}
+            currentUserId={currentUserId}
+          />
+        </aside>
       </div>
     </div>
   );
 }
 
 type Task = NonNullable<ReturnType<typeof useTask>["data"]>;
+
+function StatusBadge({ category, name }: { category: string; name: string }) {
+  const Icon = category === "DONE" ? CheckCircle2 : Clock3;
+
+  return (
+    <Badge
+      variant="outline"
+      className={cn(
+        "gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium",
+        category === "DONE"
+          ? "border-success/25 bg-success-bg text-success"
+          : category !== "TODO"
+            ? "border-accent/25 bg-accent/10 text-accent"
+            : "border-border bg-secondary text-muted-foreground",
+      )}
+    >
+      <Icon className="size-3" aria-hidden="true" />
+      {name}
+    </Badge>
+  );
+}
 
 /**
  * The task heading, editable in place.
@@ -167,14 +240,16 @@ function TaskTitle({
 
   if (!editing) {
     return (
-      <div className="group flex items-start gap-1.5">
-        <h1 className="text-2xl font-semibold tracking-tight">{task.title}</h1>
+      <div className="group flex items-start gap-2">
+        <h1 className="max-w-4xl text-2xl leading-tight font-semibold tracking-tight sm:text-3xl">
+          {task.title}
+        </h1>
         {canEdit && (
           <Button
             variant="ghost"
             size="icon"
             aria-label="Edit title"
-            className="text-muted-foreground hover:text-foreground mt-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+            className="text-muted-foreground hover:text-foreground -mt-0.5 size-8 shrink-0 opacity-60 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
             onClick={() => {
               setDraft(task.title);
               setEditing(true);
@@ -195,7 +270,7 @@ function TaskTitle({
         maxLength={500}
         aria-label="Task title"
         aria-invalid={!trimmed}
-        className="h-auto py-1.5 text-2xl font-semibold tracking-tight md:text-2xl"
+        className="h-auto max-w-4xl py-1.5 text-2xl font-semibold tracking-tight md:text-3xl"
         onChange={(event) => setDraft(event.target.value)}
         onKeyDown={(event) => {
           if (event.key === "Enter") {
@@ -244,13 +319,20 @@ function DescriptionCard({
   const [draft, setDraft] = useState(task.description ?? "");
 
   return (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between">
-        <CardTitle className="text-base">Description</CardTitle>
+    <Card size="sm" className="shadow-card">
+      <CardHeader className="flex-row items-center justify-between border-b">
+        <CardTitle className="flex items-center gap-2">
+          <FileText
+            className="text-muted-foreground size-4"
+            aria-hidden="true"
+          />
+          Description
+        </CardTitle>
         {canEdit && !editing && (
           <Button
             variant="ghost"
             size="sm"
+            className="h-7 px-2 text-xs"
             onClick={() => {
               setDraft(task.description ?? "");
               setEditing(true);
@@ -264,8 +346,9 @@ function DescriptionCard({
         {editing ? (
           <div className="space-y-3">
             <Textarea
-              rows={8}
+              rows={7}
               value={draft}
+              className="resize-y text-sm leading-relaxed"
               onChange={(event) => setDraft(event.target.value)}
             />
             <div className="flex gap-2">
@@ -295,11 +378,23 @@ function DescriptionCard({
             </div>
           </div>
         ) : task.description ? (
-          <p className="text-sm leading-relaxed whitespace-pre-wrap">
+          <p className="text-sm leading-6 whitespace-pre-wrap">
             {task.description}
           </p>
         ) : (
-          <p className="text-muted-foreground text-sm">No description.</p>
+          <div className="text-muted-foreground flex min-h-20 flex-col items-center justify-center rounded-lg border border-dashed px-4 text-center text-sm">
+            <FileText className="mb-2 size-5 opacity-40" aria-hidden="true" />
+            No description added.
+            {canEdit && (
+              <button
+                type="button"
+                className="text-accent mt-1 text-xs font-medium hover:underline"
+                onClick={() => setEditing(true)}
+              >
+                Add description
+              </button>
+            )}
+          </div>
         )}
       </CardContent>
     </Card>
@@ -319,18 +414,18 @@ function PropertiesCard({
   const { data: project } = useProject(task.project.id);
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Details</CardTitle>
+    <Card size="sm" className="shadow-card">
+      <CardHeader className="border-b">
+        <CardTitle>Task details</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-3.5">
         <Field label="Status">
           <Select
             value={task.status.id}
             disabled={!canEdit || updateTask.isPending}
             onValueChange={(statusId) => updateTask.mutate({ statusId })}
           >
-            <SelectTrigger className="w-full">
+            <SelectTrigger className="h-8 w-full text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -349,7 +444,7 @@ function PropertiesCard({
             disabled={!canEdit || updateTask.isPending}
             onValueChange={(type) => updateTask.mutate({ type })}
           >
-            <SelectTrigger className="w-full">
+            <SelectTrigger className="h-8 w-full text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -368,7 +463,7 @@ function PropertiesCard({
             disabled={!canEdit || updateTask.isPending}
             onValueChange={(priority) => updateTask.mutate({ priority })}
           >
-            <SelectTrigger className="w-full">
+            <SelectTrigger className="h-8 w-full text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -389,7 +484,7 @@ function PropertiesCard({
               updateTask.mutate({ assigneeId: value === "none" ? null : value })
             }
           >
-            <SelectTrigger className="w-full">
+            <SelectTrigger className="h-8 w-full text-xs">
               <SelectValue placeholder="Unassigned" />
             </SelectTrigger>
             <SelectContent>
@@ -406,6 +501,7 @@ function PropertiesCard({
         <Field label="Due date">
           <Input
             type="date"
+            className="h-8 text-xs"
             disabled={!canEdit || updateTask.isPending}
             defaultValue={task.due_date?.slice(0, 10) ?? ""}
             onChange={(event) =>
@@ -418,6 +514,7 @@ function PropertiesCard({
           <Input
             type="number"
             min={0}
+            className="h-8 text-xs"
             disabled={!canEdit || updateTask.isPending}
             defaultValue={task.estimate_minutes ?? ""}
             onBlur={(event) =>
@@ -430,12 +527,21 @@ function PropertiesCard({
           />
         </Field>
 
-        <div className="text-muted-foreground space-y-1 border-t pt-3 text-xs">
-          <p>Reported by {task.reporter.name ?? task.reporter.email}</p>
-          <p>Created {new Date(task.created_at).toLocaleString()}</p>
+        <div className="text-muted-foreground space-y-2 border-t pt-3 text-[11px]">
+          <div className="flex items-center gap-2">
+            <UserAvatar user={task.reporter} size="xs" />
+            <span className="min-w-0">
+              Reported by{" "}
+              <span className="text-foreground font-medium">
+                {displayName(task.reporter)}
+              </span>
+            </span>
+          </div>
+          <p className="pl-8">Created {formatDateTime(task.created_at)}</p>
           {task.completed_at && (
-            <p className="text-success">
-              Completed {new Date(task.completed_at).toLocaleString()}
+            <p className="text-success flex items-center gap-1.5 pl-8">
+              <CheckCircle2 className="size-3" aria-hidden="true" />
+              Completed {formatDateTime(task.completed_at)}
             </p>
           )}
         </div>
@@ -453,7 +559,9 @@ function Field({
 }) {
   return (
     <div className="space-y-1.5">
-      <Label className="text-muted-foreground text-xs">{label}</Label>
+      <Label className="text-muted-foreground text-[11px] font-medium">
+        {label}
+      </Label>
       {children}
     </div>
   );
@@ -475,10 +583,19 @@ function AttachmentsCard({
   const [previewing, setPreviewing] = useState<Attachment | null>(null);
 
   return (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between">
-        <CardTitle className="text-base">
-          Attachments {attachments?.length ? `(${attachments.length})` : ""}
+    <Card size="sm" className="shadow-card">
+      <CardHeader className="flex-row items-center justify-between border-b">
+        <CardTitle className="flex items-center gap-2">
+          <Paperclip
+            className="text-muted-foreground size-4"
+            aria-hidden="true"
+          />
+          Attachments
+          {attachments?.length ? (
+            <span className="bg-secondary text-muted-foreground rounded-full px-1.5 py-0.5 text-[10px] font-medium">
+              {attachments.length}
+            </span>
+          ) : null}
         </CardTitle>
         {canEdit && (
           <>
@@ -496,6 +613,7 @@ function AttachmentsCard({
             <Button
               variant="ghost"
               size="sm"
+              className="h-7 px-2 text-xs"
               disabled={upload.isPending}
               onClick={() => inputRef.current?.click()}
             >
@@ -513,15 +631,19 @@ function AttachmentsCard({
         {isLoading ? (
           <Skeleton className="h-10 w-full" />
         ) : !attachments || attachments.length === 0 ? (
-          <p className="text-muted-foreground text-sm">No files attached.</p>
+          <div className="text-muted-foreground flex min-h-16 items-center justify-center rounded-lg border border-dashed text-sm">
+            No files attached.
+          </div>
         ) : (
-          <ul className="divide-y">
+          <ul className="space-y-2">
             {attachments.map((attachment) => (
               <li
                 key={attachment.id}
-                className="flex items-center gap-3 py-2 first:pt-0 last:pb-0"
+                className="bg-secondary/45 flex items-center gap-3 rounded-lg px-3 py-2.5"
               >
-                <Paperclip className="text-muted-foreground size-4 shrink-0" />
+                <span className="bg-card text-muted-foreground ring-foreground/10 flex size-8 shrink-0 items-center justify-center rounded-md ring-1">
+                  <FileText className="size-3.5" aria-hidden="true" />
+                </span>
                 <div className="min-w-0 flex-1">
                   {/* Both routes authorize per user; neither is a public URL.
                       A file with no preview_url is one we refuse to render
@@ -544,7 +666,7 @@ function AttachmentsCard({
                   )}
                   <p className="text-muted-foreground text-xs">
                     {formatBytes(attachment.size_bytes)} ·{" "}
-                    {attachment.uploader.name ?? attachment.uploader.email}
+                    {displayName(attachment.uploader)}
                   </p>
                 </div>
                 {attachment.preview_url && (
@@ -559,8 +681,8 @@ function AttachmentsCard({
                 {(attachment.uploader.id === currentUserId || canEdit) && (
                   <Button
                     variant="ghost"
-                    size="sm"
-                    className="text-muted-foreground hover:text-danger"
+                    size="icon"
+                    className="text-muted-foreground hover:text-danger size-8"
                     disabled={remove.isPending}
                     onClick={() => remove.mutate(attachment.id)}
                     aria-label={`Remove ${attachment.file_name}`}
@@ -599,7 +721,10 @@ function AttachmentPreviewDialog({
   onClose: () => void;
 }) {
   return (
-    <Dialog open={Boolean(attachment)} onOpenChange={(open) => !open && onClose()}>
+    <Dialog
+      open={Boolean(attachment)}
+      onOpenChange={(open) => !open && onClose()}
+    >
       <DialogContent className="w-[95vw] sm:max-w-5xl">
         {attachment && (
           <>
@@ -682,19 +807,34 @@ function CommentsCard({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">
-          Comments {comments.length > 0 ? `(${comments.length})` : ""}
+    <Card size="sm" className="shadow-card">
+      <CardHeader className="border-b">
+        <CardTitle className="flex items-center gap-2">
+          <MessageSquare
+            className="text-muted-foreground size-4"
+            aria-hidden="true"
+          />
+          Activity
+          {comments.length > 0 ? (
+            <span className="bg-secondary text-muted-foreground rounded-full px-1.5 py-0.5 text-[10px] font-medium">
+              {comments.length}
+            </span>
+          ) : null}
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-5">
         {isLoading ? (
           <Skeleton className="h-16 w-full" />
         ) : roots.length === 0 ? (
-          <p className="text-muted-foreground text-sm">No comments yet.</p>
+          <div className="text-muted-foreground flex min-h-20 flex-col items-center justify-center rounded-lg border border-dashed text-sm">
+            <MessageSquare
+              className="mb-2 size-5 opacity-40"
+              aria-hidden="true"
+            />
+            No comments yet.
+          </div>
         ) : (
-          <ul className="space-y-4">
+          <ul className="space-y-5">
             {roots.map((comment) => (
               <li key={comment.id} className="space-y-3">
                 <CommentRow
@@ -705,7 +845,7 @@ function CommentsCard({
                   onDelete={() => deleteComment.mutate(comment.id)}
                 />
                 {repliesOf(comment.id).length > 0 && (
-                  <ul className="space-y-3 border-l pl-4">
+                  <ul className="border-border ml-3 space-y-3 border-l pl-5">
                     {repliesOf(comment.id).map((reply) => (
                       <li key={reply.id}>
                         <CommentRow
@@ -740,10 +880,11 @@ function CommentsCard({
             <Textarea
               rows={3}
               value={body}
+              className="resize-y bg-transparent text-sm"
               onChange={(event) => setBody(event.target.value)}
               placeholder="Write a comment. Mention someone with @their.email@example.com"
             />
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-muted-foreground text-xs">
                 Only project members can be mentioned.
               </p>
@@ -778,7 +919,12 @@ function CommentRow({
     id: string;
     body: string;
     created_at: string;
-    author: { id: string; name: string | null; email: string; image: string | null };
+    author: {
+      id: string;
+      name: string | null;
+      email: string;
+      image: string | null;
+    };
     mentions: { id: string; email: string }[];
   };
   currentUserId: string;
@@ -786,29 +932,17 @@ function CommentRow({
   onReply?: () => void;
   onDelete: () => void;
 }) {
-  const initials = (comment.author.name || comment.author.email)
-    .split(/[\s@.]+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("");
-
   return (
     <div className="flex gap-3">
-      <Avatar className="size-7 shrink-0">
-        {comment.author.image ? (
-          <AvatarImage src={comment.author.image} alt="" />
-        ) : null}
-        <AvatarFallback className="text-[10px]">{initials || "?"}</AvatarFallback>
-      </Avatar>
+      <UserAvatar user={comment.author} size="md" />
 
-      <div className="min-w-0 flex-1">
+      <div className="bg-secondary/45 min-w-0 flex-1 rounded-lg px-3 py-2.5">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-medium">
             {comment.author.name ?? comment.author.email}
           </span>
           <span className="text-muted-foreground text-xs">
-            {new Date(comment.created_at).toLocaleString()}
+            {formatDateTime(comment.created_at)}
           </span>
         </div>
 
@@ -819,14 +953,18 @@ function CommentRow({
         {comment.mentions.length > 0 && (
           <div className="mt-1.5 flex flex-wrap gap-1">
             {comment.mentions.map((mention) => (
-              <Badge key={mention.id} variant="secondary" className="text-[10px]">
+              <Badge
+                key={mention.id}
+                variant="secondary"
+                className="text-[10px]"
+              >
                 @{mention.email}
               </Badge>
             ))}
           </div>
         )}
 
-        <div className="mt-1.5 flex gap-3">
+        <div className="mt-2 flex gap-3">
           {canReply && onReply && (
             <button
               type="button"
@@ -865,44 +1003,44 @@ function TimeCard({
   const deleteTimeLog = useDeleteTimeLog(taskId);
 
   const [minutes, setMinutes] = useState("");
-  const [spentOn, setSpentOn] = useState(
-    new Date().toISOString().slice(0, 10),
-  );
+  const [spentOn, setSpentOn] = useState(new Date().toISOString().slice(0, 10));
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">
-          Time logged
+    <Card size="sm" className="shadow-card">
+      <CardHeader className="border-b">
+        <CardTitle className="flex items-center gap-2">
+          <Clock3 className="text-muted-foreground size-4" aria-hidden="true" />
+          Time
           {data ? (
-            <span className="text-muted-foreground ml-2 text-sm font-normal">
+            <span className="bg-accent/10 text-accent ml-auto rounded-full px-2 py-0.5 text-[10px] font-semibold">
               {formatMinutes(data.total_minutes)}
             </span>
           ) : null}
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-3">
         {canEdit && (
-          <div className="space-y-2">
-            <div className="flex gap-2">
+          <div className="bg-secondary/45 space-y-2 rounded-lg p-2.5">
+            <div className="grid grid-cols-[5rem_1fr] gap-2">
               <Input
                 type="number"
                 min={1}
-                placeholder="Minutes"
+                placeholder="Min"
                 value={minutes}
                 onChange={(event) => setMinutes(event.target.value)}
-                className="w-28"
+                className="h-8 text-xs"
               />
               <Input
                 type="date"
                 value={spentOn}
                 max={new Date().toISOString().slice(0, 10)}
                 onChange={(event) => setSpentOn(event.target.value)}
+                className="h-8 min-w-0 text-xs"
               />
             </div>
             <Button
               size="sm"
-              className="w-full"
+              className="h-8 w-full text-xs"
               disabled={createTimeLog.isPending || !minutes}
               onClick={() =>
                 createTimeLog.mutate(
@@ -922,20 +1060,27 @@ function TimeCard({
         {isLoading ? (
           <Skeleton className="h-10 w-full" />
         ) : !data || data.entries.length === 0 ? (
-          <p className="text-muted-foreground text-sm">No time logged.</p>
+          <p className="text-muted-foreground py-2 text-center text-xs">
+            No time logged.
+          </p>
         ) : (
           <ul className="divide-y text-sm">
             {data.entries.map((entry) => (
               <li
                 key={entry.id}
-                className="flex items-center gap-2 py-2 first:pt-0 last:pb-0"
+                className="flex items-center gap-2 py-2.5 first:pt-0 last:pb-0"
               >
-                <span className="font-medium">{formatMinutes(entry.minutes)}</span>
-                <span className="text-muted-foreground text-xs">
-                  {entry.spent_on}
-                </span>
-                <span className="text-muted-foreground ml-auto truncate text-xs">
-                  {entry.user.name ?? entry.user.email}
+                <UserAvatar user={entry.user} size="xs" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-medium">
+                    {displayName(entry.user)}
+                  </p>
+                  <p className="text-muted-foreground text-[10px]">
+                    {formatShortDate(entry.spent_on)}
+                  </p>
+                </div>
+                <span className="tnum text-xs font-semibold">
+                  {formatMinutes(entry.minutes)}
                 </span>
                 {entry.user.id === currentUserId && (
                   <button
@@ -970,4 +1115,18 @@ function formatMinutes(minutes: number): string {
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
   return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;
+}
+
+function formatDateTime(value: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
+function formatShortDate(value: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    day: "numeric",
+    month: "short",
+  }).format(new Date(`${value.slice(0, 10)}T00:00:00`));
 }
