@@ -317,11 +317,12 @@ model Comment {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  task     Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  author   User      @relation(fields: [authorId], references: [id])
-  parent   Comment?  @relation("CommentThread", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  replies  Comment[] @relation("CommentThread")
-  mentions Mention[]
+  task        Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  author      User         @relation(fields: [authorId], references: [id])
+  parent      Comment?     @relation("CommentThread", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  replies     Comment[]    @relation("CommentThread")
+  mentions    Mention[]
+  attachments Attachment[]
 
   @@index([taskId, createdAt], map: "ix_comment_task")
   @@index([parentId], map: "ix_comment_parent")
@@ -351,6 +352,13 @@ model Attachment {
   taskId     String @map("task_id") @db.Char(36)
   uploaderId String @map("uploader_id") @db.Char(36)
 
+  // Set when the file arrived with a comment rather than on the task itself.
+  // The two are deliberately distinguishable: the Files panel lists the rows
+  // where this is NULL, and a comment renders its own. Every attachment still
+  // carries `task_id`, so authorization stays a single project lookup and does
+  // not have to walk through the comment.
+  commentId  String? @map("comment_id") @db.Char(36)
+
   // Opaque storage key, e.g. projects/<id>/tasks/<id>/<uuid>.png. Never a
   // client-supplied path — see src/server/storage/.
   storageKey String @unique(map: "uq_attachment_storage_key") @map("storage_key") @db.VarChar(512)
@@ -362,10 +370,12 @@ model Attachment {
   createdAt DateTime  @default(now()) @map("created_at")
   deletedAt DateTime? @map("deleted_at")
 
-  task     Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  uploader User @relation(fields: [uploaderId], references: [id])
+  task     Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  uploader User     @relation(fields: [uploaderId], references: [id])
+  comment  Comment? @relation(fields: [commentId], references: [id], onDelete: SetNull)
 
   @@index([taskId, deletedAt], map: "ix_attachment_task")
+  @@index([commentId], map: "ix_attachment_comment")
   @@map("attachment")
 }
 

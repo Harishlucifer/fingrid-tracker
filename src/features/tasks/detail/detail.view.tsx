@@ -2,10 +2,12 @@
 
 import {
   ArrowLeft,
+  ArrowRight,
   CheckCircle2,
   Clock3,
   Download,
   FileText,
+  History,
   Loader2,
   MessageSquare,
   Paperclip,
@@ -14,9 +16,10 @@ import {
   Trash2,
   Upload,
   UserRound,
+  X,
 } from "lucide-react";
 import Link from "next/link";
-import { useRef, useState } from "react";
+import { createContext, useContext, useRef, useState } from "react";
 
 import { DueDate, PriorityBadge, TypeBadge } from "@/components/task-meta";
 import { Badge } from "@/components/ui/badge";
@@ -40,6 +43,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { UserAvatar, displayName } from "@/components/user-avatar";
 import { TASK_PRIORITIES, TASK_TYPES } from "@/lib/constants";
@@ -48,6 +57,7 @@ import { cn } from "@/lib/utils";
 import { useProject } from "../../projects/board/board.api";
 import {
   type Attachment,
+  type TaskActivityEntry,
   useAttachments,
   useComments,
   useCreateComment,
@@ -56,10 +66,25 @@ import {
   useDeleteComment,
   useDeleteTimeLog,
   useTask,
+  useTaskActivity,
   useTimeLogs,
   useUpdateTask,
+  useUpdateTimeLog,
   useUploadAttachment,
 } from "./detail.api";
+
+/**
+ * Opens the preview dialog for one file.
+ *
+ * A context rather than a prop, because files now appear in two places that are
+ * nowhere near each other in the tree — the Files panel and inside individual
+ * comments — and both should open the same single dialog. Threading a callback
+ * down through the comment list to do it would be the same wiring, spelled out
+ * at every level in between.
+ */
+const PreviewContext = createContext<(attachment: Attachment) => void>(
+  () => undefined,
+);
 
 export function TaskDetailView({
   taskId,
@@ -71,6 +96,7 @@ export function TaskDetailView({
   currentUserId: string;
 }) {
   const { data: task, isLoading } = useTask(taskId);
+  const [previewing, setPreviewing] = useState<Attachment | null>(null);
 
   if (isLoading || !task) {
     return (
@@ -90,6 +116,7 @@ export function TaskDetailView({
   }
 
   return (
+    <PreviewContext.Provider value={setPreviewing}>
     <div className="mx-auto max-w-6xl space-y-5">
       <nav aria-label="Breadcrumb">
         <Link
@@ -155,7 +182,7 @@ export function TaskDetailView({
             canEdit={canEdit}
             currentUserId={currentUserId}
           />
-          <CommentsCard
+          <TaskTabsCard
             taskId={taskId}
             canEdit={canEdit}
             currentUserId={currentUserId}
@@ -164,14 +191,15 @@ export function TaskDetailView({
 
         <aside className="order-first space-y-5 xl:sticky xl:top-6 xl:order-last">
           <PropertiesCard taskId={taskId} task={task} canEdit={canEdit} />
-          <TimeCard
-            taskId={taskId}
-            canEdit={canEdit}
-            currentUserId={currentUserId}
-          />
         </aside>
       </div>
+
+      <AttachmentPreviewDialog
+        attachment={previewing}
+        onClose={() => setPreviewing(null)}
+      />
     </div>
+    </PreviewContext.Provider>
   );
 }
 
@@ -580,7 +608,7 @@ function AttachmentsCard({
   const upload = useUploadAttachment(taskId);
   const remove = useDeleteAttachment(taskId);
   const inputRef = useRef<HTMLInputElement>(null);
-  const [previewing, setPreviewing] = useState<Attachment | null>(null);
+  const preview = useContext(PreviewContext);
 
   return (
     <Card size="sm" className="shadow-card">
@@ -651,7 +679,7 @@ function AttachmentsCard({
                   {attachment.preview_url ? (
                     <button
                       type="button"
-                      onClick={() => setPreviewing(attachment)}
+                      onClick={() => preview(attachment)}
                       className="hover:text-accent block max-w-full truncate text-left text-sm font-medium"
                     >
                       {attachment.file_name}
@@ -695,11 +723,6 @@ function AttachmentsCard({
           </ul>
         )}
       </CardContent>
-
-      <AttachmentPreviewDialog
-        attachment={previewing}
-        onClose={() => setPreviewing(null)}
-      />
     </Card>
   );
 }
@@ -773,7 +796,95 @@ function AttachmentPreviewDialog({
   );
 }
 
-function CommentsCard({
+/**
+ * Comments, history and time behind one tab bar.
+ *
+ * These are three answers to three different questions about the same task, and
+ * a reader is only ever asking one of them. Stacked as separate cards, whichever
+ * one they wanted was below the two they did not; as tabs the choice is theirs,
+ * and the counts stay visible either way.
+ *
+ * Comments and time are fetched here because their totals are on the tab
+ * triggers. History deliberately is not: nothing outside its own tab needs it,
+ * and Radix unmounts the inactive panels, so it is not requested until someone
+ * asks for it.
+ */
+function TaskTabsCard({
+  taskId,
+  canEdit,
+  currentUserId,
+}: {
+  taskId: string;
+  canEdit: boolean;
+  currentUserId: string;
+}) {
+  const { data: comments } = useComments(taskId);
+  const { data: time } = useTimeLogs(taskId);
+
+  const commentCount = comments?.data.length ?? 0;
+  const loggedMinutes = time?.total_minutes ?? 0;
+
+  return (
+    <Card size="sm" className="shadow-card">
+      <Tabs defaultValue="comments" className="gap-0">
+        <CardHeader className="border-b">
+          <TabsList className="w-full">
+            <TabsTrigger value="comments">
+              <MessageSquare aria-hidden="true" />
+              Comments
+              {commentCount > 0 && <TabCount>{commentCount}</TabCount>}
+            </TabsTrigger>
+            <TabsTrigger value="activity">
+              <History aria-hidden="true" />
+              Activity
+            </TabsTrigger>
+            <TabsTrigger value="time">
+              <Clock3 aria-hidden="true" />
+              Time log
+              {loggedMinutes > 0 && (
+                <TabCount>{formatMinutes(loggedMinutes)}</TabCount>
+              )}
+            </TabsTrigger>
+          </TabsList>
+        </CardHeader>
+
+        <CardContent className="pt-(--card-spacing)">
+          <TabsContent value="comments">
+            <CommentsTab
+              taskId={taskId}
+              canEdit={canEdit}
+              currentUserId={currentUserId}
+            />
+          </TabsContent>
+          <TabsContent value="activity">
+            <ActivityTab taskId={taskId} />
+          </TabsContent>
+          <TabsContent value="time">
+            <TimeLogTab
+              taskId={taskId}
+              canEdit={canEdit}
+              currentUserId={currentUserId}
+            />
+          </TabsContent>
+        </CardContent>
+      </Tabs>
+    </Card>
+  );
+}
+
+function TabCount({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="bg-secondary text-muted-foreground rounded-full px-1.5 py-0.5 text-[10px] font-medium">
+      {children}
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Comments
+// ---------------------------------------------------------------------------
+
+function CommentsTab({
   taskId,
   canEdit,
   currentUserId,
@@ -785,21 +896,30 @@ function CommentsCard({
   const { data, isLoading } = useComments(taskId);
   const createComment = useCreateComment(taskId);
   const deleteComment = useDeleteComment(taskId);
+
   const [body, setBody] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
   const [replyTo, setReplyTo] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const comments = data?.data ?? [];
   const roots = comments.filter((comment) => !comment.parent_id);
   const repliesOf = (parentId: string) =>
     comments.filter((comment) => comment.parent_id === parentId);
 
+  // A file is a comment too: attaching a screenshot with nothing to add is a
+  // real thing people do, so an empty body is only empty when nothing came
+  // with it. The server applies the same rule.
+  const canSubmit = body.trim().length > 0 || files.length > 0;
+
   function submit() {
-    if (!body.trim()) return;
+    if (!canSubmit) return;
     createComment.mutate(
-      { body, parentId: replyTo },
+      { body, parentId: replyTo, files },
       {
         onSuccess: () => {
           setBody("");
+          setFiles([]);
           setReplyTo(null);
         },
       },
@@ -807,106 +927,158 @@ function CommentsCard({
   }
 
   return (
-    <Card size="sm" className="shadow-card">
-      <CardHeader className="border-b">
-        <CardTitle className="flex items-center gap-2">
-          <MessageSquare
-            className="text-muted-foreground size-4"
-            aria-hidden="true"
-          />
-          Activity
-          {comments.length > 0 ? (
-            <span className="bg-secondary text-muted-foreground rounded-full px-1.5 py-0.5 text-[10px] font-medium">
-              {comments.length}
-            </span>
-          ) : null}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-5">
-        {isLoading ? (
-          <Skeleton className="h-16 w-full" />
-        ) : roots.length === 0 ? (
-          <div className="text-muted-foreground flex min-h-20 flex-col items-center justify-center rounded-lg border border-dashed text-sm">
-            <MessageSquare
-              className="mb-2 size-5 opacity-40"
-              aria-hidden="true"
-            />
-            No comments yet.
-          </div>
-        ) : (
-          <ul className="space-y-5">
-            {roots.map((comment) => (
-              <li key={comment.id} className="space-y-3">
-                <CommentRow
-                  comment={comment}
-                  currentUserId={currentUserId}
-                  canReply={canEdit}
-                  onReply={() => setReplyTo(comment.id)}
-                  onDelete={() => deleteComment.mutate(comment.id)}
-                />
-                {repliesOf(comment.id).length > 0 && (
-                  <ul className="border-border ml-3 space-y-3 border-l pl-5">
-                    {repliesOf(comment.id).map((reply) => (
-                      <li key={reply.id}>
-                        <CommentRow
-                          comment={reply}
-                          currentUserId={currentUserId}
-                          canReply={false}
-                          onDelete={() => deleteComment.mutate(reply.id)}
-                        />
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
+    <div className="space-y-5">
+      {isLoading ? (
+        <Skeleton className="h-16 w-full" />
+      ) : roots.length === 0 ? (
+        <div className="text-muted-foreground flex min-h-20 flex-col items-center justify-center rounded-lg border border-dashed text-sm">
+          <MessageSquare className="mb-2 size-5 opacity-40" aria-hidden="true" />
+          No comments yet.
+        </div>
+      ) : (
+        <ul className="space-y-5">
+          {roots.map((comment) => (
+            <li key={comment.id} className="space-y-3">
+              <CommentRow
+                comment={comment}
+                currentUserId={currentUserId}
+                canReply={canEdit}
+                onReply={() => setReplyTo(comment.id)}
+                onDelete={() => deleteComment.mutate(comment.id)}
+              />
+              {repliesOf(comment.id).length > 0 && (
+                <ul className="border-border ml-3 space-y-3 border-l pl-5">
+                  {repliesOf(comment.id).map((reply) => (
+                    <li key={reply.id}>
+                      <CommentRow
+                        comment={reply}
+                        currentUserId={currentUserId}
+                        canReply={false}
+                        onDelete={() => deleteComment.mutate(reply.id)}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
 
-        {canEdit && (
-          <div className="space-y-2 border-t pt-4">
-            {replyTo && (
-              <p className="text-muted-foreground text-xs">
-                Replying to a comment ·{" "}
-                <button
-                  type="button"
-                  className="hover:text-foreground underline"
-                  onClick={() => setReplyTo(null)}
-                >
-                  cancel
-                </button>
-              </p>
-            )}
-            <Textarea
-              rows={3}
-              value={body}
-              className="resize-y bg-transparent text-sm"
-              onChange={(event) => setBody(event.target.value)}
-              placeholder="Write a comment. Mention someone with @their.email@example.com"
-            />
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-muted-foreground text-xs">
-                Only project members can be mentioned.
-              </p>
-              <Button
-                size="sm"
-                onClick={submit}
-                disabled={createComment.isPending || !body.trim()}
+      {canEdit && (
+        <div className="space-y-2 border-t pt-4">
+          {replyTo && (
+            <p className="text-muted-foreground text-xs">
+              Replying to a comment ·{" "}
+              <button
+                type="button"
+                className="hover:text-foreground underline"
+                onClick={() => setReplyTo(null)}
               >
-                {createComment.isPending ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Send className="size-4" />
-                )}
-                Comment
+                cancel
+              </button>
+            </p>
+          )}
+          <Textarea
+            rows={3}
+            value={body}
+            className="resize-y bg-transparent text-sm"
+            onChange={(event) => setBody(event.target.value)}
+            placeholder="Write a comment. Mention someone with @their.email@example.com"
+          />
+
+          {files.length > 0 && (
+            <ul className="flex flex-wrap gap-2">
+              {files.map((file, index) => (
+                <li
+                  key={`${file.name}-${index}`}
+                  className="bg-secondary/60 flex max-w-full items-center gap-1.5 rounded-md py-1 pr-1 pl-2 text-xs"
+                >
+                  <Paperclip
+                    className="text-muted-foreground size-3 shrink-0"
+                    aria-hidden="true"
+                  />
+                  <span className="truncate">{file.name}</span>
+                  <span className="text-muted-foreground shrink-0">
+                    {formatBytes(file.size)}
+                  </span>
+                  <button
+                    type="button"
+                    className="text-muted-foreground hover:text-danger shrink-0 rounded p-0.5"
+                    aria-label={`Remove ${file.name}`}
+                    disabled={createComment.isPending}
+                    onClick={() =>
+                      setFiles((current) =>
+                        current.filter((_, at) => at !== index),
+                      )
+                    }
+                  >
+                    <X className="size-3" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={(event) => {
+              const picked = Array.from(event.target.files ?? []);
+              // MAX_COMMENT_FILES is also enforced by the API; capping here
+              // just means the refusal arrives before the upload does.
+              setFiles((current) =>
+                [...current, ...picked].slice(0, MAX_COMMENT_FILES),
+              );
+              // Reset so re-picking the same file fires change again.
+              event.target.value = "";
+            }}
+          />
+
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-3">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                disabled={
+                  createComment.isPending || files.length >= MAX_COMMENT_FILES
+                }
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Paperclip className="size-3.5" />
+                Attach
               </Button>
+              <p className="text-muted-foreground text-xs">
+                {files.length >= MAX_COMMENT_FILES
+                  ? `Up to ${MAX_COMMENT_FILES} files per comment.`
+                  : "Only project members can be mentioned."}
+              </p>
             </div>
+            <Button
+              size="sm"
+              onClick={submit}
+              disabled={createComment.isPending || !canSubmit}
+            >
+              {createComment.isPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Send className="size-4" />
+              )}
+              Comment
+            </Button>
           </div>
-        )}
-      </CardContent>
-    </Card>
+        </div>
+      )}
+    </div>
   );
 }
+
+/** Matches the cap in `createCommentSchema`. */
+const MAX_COMMENT_FILES = 10;
 
 function CommentRow({
   comment,
@@ -926,6 +1098,7 @@ function CommentRow({
       image: string | null;
     };
     mentions: { id: string; email: string }[];
+    attachments: Attachment[];
   };
   currentUserId: string;
   canReply: boolean;
@@ -946,9 +1119,21 @@ function CommentRow({
           </span>
         </div>
 
-        <p className="mt-1 text-sm leading-relaxed whitespace-pre-wrap">
-          {comment.body}
-        </p>
+        {comment.body.trim().length > 0 && (
+          <p className="mt-1 text-sm leading-relaxed whitespace-pre-wrap">
+            {comment.body}
+          </p>
+        )}
+
+        {comment.attachments.length > 0 && (
+          <ul className="mt-2 space-y-1.5">
+            {comment.attachments.map((attachment) => (
+              <li key={attachment.id}>
+                <AttachmentChip attachment={attachment} />
+              </li>
+            ))}
+          </ul>
+        )}
 
         {comment.mentions.length > 0 && (
           <div className="mt-1.5 flex flex-wrap gap-1">
@@ -989,7 +1174,177 @@ function CommentRow({
   );
 }
 
-function TimeCard({
+/**
+ * One file inside a comment. Compact, because it sits in a paragraph of
+ * discussion rather than in a panel of its own — but it opens the same preview
+ * dialog and offers the same authorized download as the Files panel does.
+ *
+ * There is no delete here on purpose: the file belongs to the comment, so it
+ * goes when the comment does.
+ */
+function AttachmentChip({ attachment }: { attachment: Attachment }) {
+  const preview = useContext(PreviewContext);
+
+  return (
+    <div className="bg-card ring-foreground/10 flex items-center gap-2 rounded-md px-2 py-1.5 ring-1">
+      <FileText
+        className="text-muted-foreground size-3.5 shrink-0"
+        aria-hidden="true"
+      />
+      {attachment.preview_url ? (
+        <button
+          type="button"
+          onClick={() => preview(attachment)}
+          className="hover:text-accent min-w-0 flex-1 truncate text-left text-xs font-medium"
+        >
+          {attachment.file_name}
+        </button>
+      ) : (
+        <a
+          href={attachment.download_url}
+          className="hover:text-accent min-w-0 flex-1 truncate text-xs font-medium"
+        >
+          {attachment.file_name}
+        </a>
+      )}
+      <span className="text-muted-foreground shrink-0 text-[10px]">
+        {formatBytes(attachment.size_bytes)}
+      </span>
+      <a
+        href={attachment.download_url}
+        className="text-muted-foreground hover:text-foreground shrink-0"
+        aria-label={`Download ${attachment.file_name}`}
+      >
+        <Download className="size-3.5" />
+      </a>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Activity
+// ---------------------------------------------------------------------------
+
+/** What each audit action reads as, in the past tense the reader is scanning for. */
+const ACTIVITY_VERBS: Record<string, string> = {
+  "task.created": "created this task",
+  "task.status_changed": "moved this task",
+  "task.assigned": "assigned this task",
+  "task.unassigned": "unassigned this task",
+  "task.updated": "updated this task",
+  "task.deleted": "deleted this task",
+};
+
+const ACTIVITY_FIELD_LABELS: Record<string, string> = {
+  status: "Status",
+  assignee: "Assignee",
+  sprint: "Sprint",
+  title: "Title",
+  description: "Description",
+  type: "Type",
+  priority: "Priority",
+  due_date: "Due date",
+  estimate_minutes: "Estimate",
+};
+
+/**
+ * The task's own history — every status move and reassignment, and who made it.
+ *
+ * Comments, files and time entries are not repeated here: each already has the
+ * tab beside this one, and mixing them in is what turns "who moved this?" into
+ * a scrolling exercise.
+ */
+function ActivityTab({ taskId }: { taskId: string }) {
+  const { data, isLoading } = useTaskActivity(taskId);
+  const entries = data?.data ?? [];
+
+  if (isLoading) return <Skeleton className="h-24 w-full" />;
+
+  if (entries.length === 0) {
+    return (
+      <div className="text-muted-foreground flex min-h-20 flex-col items-center justify-center rounded-lg border border-dashed text-sm">
+        <History className="mb-2 size-5 opacity-40" aria-hidden="true" />
+        Nothing has happened to this task yet.
+      </div>
+    );
+  }
+
+  return (
+    <ol className="space-y-4">
+      {entries.map((entry) => (
+        <li key={entry.id}>
+          <ActivityRow entry={entry} />
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function ActivityRow({ entry }: { entry: TaskActivityEntry }) {
+  return (
+    <div className="flex gap-3">
+      <UserAvatar user={entry.actor} size="md" />
+
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <span className="text-sm">
+            <span className="font-medium">{displayName(entry.actor)}</span>{" "}
+            <span className="text-muted-foreground">
+              {ACTIVITY_VERBS[entry.action] ?? entry.action}
+            </span>
+          </span>
+          <span className="text-muted-foreground text-xs">
+            {formatDateTime(entry.created_at)}
+          </span>
+        </div>
+
+        {entry.changes.length > 0 && (
+          <ul className="mt-1.5 space-y-1">
+            {entry.changes.map((change) => (
+              <li
+                key={change.field}
+                className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs"
+              >
+                <span className="text-muted-foreground w-20 shrink-0">
+                  {ACTIVITY_FIELD_LABELS[change.field] ?? change.field}
+                </span>
+                {/* A board drag records where the task landed but not where it
+                    came from, so there is nothing to draw an arrow away from. */}
+                {change.from !== null && (
+                  <>
+                    <span className="text-muted-foreground line-clamp-1 max-w-[16rem] break-all">
+                      {displayActivityValue(change.field, change.from)}
+                    </span>
+                    <ArrowRight
+                      className="text-muted-foreground/60 size-3 shrink-0"
+                      aria-hidden="true"
+                    />
+                  </>
+                )}
+                <span className="line-clamp-1 max-w-[16rem] font-medium break-all">
+                  {displayActivityValue(change.field, change.to)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function displayActivityValue(field: string, value: string | null): string {
+  if (value === null) return field === "assignee" ? "Unassigned" : "None";
+  if (field === "due_date") return formatShortDate(value);
+  if (field === "estimate_minutes") return formatMinutes(Number(value));
+  return value;
+}
+
+// ---------------------------------------------------------------------------
+// Time log
+// ---------------------------------------------------------------------------
+
+function TimeLogTab({
   taskId,
   canEdit,
   currentUserId,
@@ -1002,50 +1357,58 @@ function TimeCard({
   const createTimeLog = useCreateTimeLog(taskId);
   const deleteTimeLog = useDeleteTimeLog(taskId);
 
+  const today = new Date().toISOString().slice(0, 10);
   const [minutes, setMinutes] = useState("");
-  const [spentOn, setSpentOn] = useState(new Date().toISOString().slice(0, 10));
+  const [spentOn, setSpentOn] = useState(today);
+  const [note, setNote] = useState("");
 
   return (
-    <Card size="sm" className="shadow-card">
-      <CardHeader className="border-b">
-        <CardTitle className="flex items-center gap-2">
-          <Clock3 className="text-muted-foreground size-4" aria-hidden="true" />
-          Time
-          {data ? (
-            <span className="bg-accent/10 text-accent ml-auto rounded-full px-2 py-0.5 text-[10px] font-semibold">
-              {formatMinutes(data.total_minutes)}
-            </span>
-          ) : null}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {canEdit && (
-          <div className="bg-secondary/45 space-y-2 rounded-lg p-2.5">
-            <div className="grid grid-cols-[5rem_1fr] gap-2">
-              <Input
-                type="number"
-                min={1}
-                placeholder="Min"
-                value={minutes}
-                onChange={(event) => setMinutes(event.target.value)}
-                className="h-8 text-xs"
-              />
-              <Input
-                type="date"
-                value={spentOn}
-                max={new Date().toISOString().slice(0, 10)}
-                onChange={(event) => setSpentOn(event.target.value)}
-                className="h-8 min-w-0 text-xs"
-              />
-            </div>
+    <div className="space-y-4">
+      {canEdit && (
+        <div className="bg-secondary/45 space-y-2 rounded-lg p-3">
+          <div className="grid gap-2 sm:grid-cols-[6rem_10rem_minmax(0,1fr)_auto]">
+            <Input
+              type="number"
+              min={1}
+              placeholder="Minutes"
+              value={minutes}
+              aria-label="Minutes"
+              onChange={(event) => setMinutes(event.target.value)}
+              className="h-8 text-xs"
+            />
+            <Input
+              type="date"
+              value={spentOn}
+              max={today}
+              aria-label="Date worked"
+              onChange={(event) => setSpentOn(event.target.value)}
+              className="h-8 min-w-0 text-xs"
+            />
+            <Input
+              placeholder="What did you work on? (optional)"
+              value={note}
+              maxLength={500}
+              aria-label="Note"
+              onChange={(event) => setNote(event.target.value)}
+              className="h-8 text-xs"
+            />
             <Button
               size="sm"
-              className="h-8 w-full text-xs"
+              className="h-8 text-xs"
               disabled={createTimeLog.isPending || !minutes}
               onClick={() =>
                 createTimeLog.mutate(
-                  { minutes: Number(minutes), spentOn },
-                  { onSuccess: () => setMinutes("") },
+                  {
+                    minutes: Number(minutes),
+                    spentOn,
+                    ...(note.trim() ? { note: note.trim() } : {}),
+                  },
+                  {
+                    onSuccess: () => {
+                      setMinutes("");
+                      setNote("");
+                    },
+                  },
                 )
               }
             >
@@ -1055,52 +1418,196 @@ function TimeCard({
               Log time
             </Button>
           </div>
-        )}
+        </div>
+      )}
 
-        {isLoading ? (
-          <Skeleton className="h-10 w-full" />
-        ) : !data || data.entries.length === 0 ? (
-          <p className="text-muted-foreground py-2 text-center text-xs">
-            No time logged.
-          </p>
-        ) : (
-          <ul className="divide-y text-sm">
+      {isLoading ? (
+        <Skeleton className="h-16 w-full" />
+      ) : !data || data.entries.length === 0 ? (
+        <div className="text-muted-foreground flex min-h-20 flex-col items-center justify-center rounded-lg border border-dashed text-sm">
+          <Clock3 className="mb-2 size-5 opacity-40" aria-hidden="true" />
+          No time logged.
+        </div>
+      ) : (
+        <>
+          <ul className="divide-y">
             {data.entries.map((entry) => (
-              <li
+              <TimeEntryRow
                 key={entry.id}
-                className="flex items-center gap-2 py-2.5 first:pt-0 last:pb-0"
-              >
-                <UserAvatar user={entry.user} size="xs" />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-medium">
-                    {displayName(entry.user)}
-                  </p>
-                  <p className="text-muted-foreground text-[10px]">
-                    {formatShortDate(entry.spent_on)}
-                  </p>
-                </div>
-                <span className="tnum text-xs font-semibold">
-                  {formatMinutes(entry.minutes)}
-                </span>
-                {entry.user.id === currentUserId && (
-                  <button
-                    type="button"
-                    className={cn(
-                      "text-muted-foreground hover:text-danger shrink-0",
-                      deleteTimeLog.isPending && "opacity-50",
-                    )}
-                    onClick={() => deleteTimeLog.mutate(entry.id)}
-                    aria-label="Remove time entry"
-                  >
-                    <Trash2 className="size-3.5" />
-                  </button>
-                )}
-              </li>
+                taskId={taskId}
+                entry={entry}
+                // Editing someone else's hours is a delete and a create wearing
+                // another name, so only the person who logged it may — which is
+                // the rule the API enforces regardless of what is rendered.
+                canManage={entry.user.id === currentUserId}
+                onDelete={() => deleteTimeLog.mutate(entry.id)}
+                deleting={deleteTimeLog.isPending}
+              />
             ))}
           </ul>
-        )}
-      </CardContent>
-    </Card>
+
+          <div className="flex items-center justify-between border-t pt-3 text-sm">
+            <span className="text-muted-foreground">Total logged</span>
+            <span className="tnum font-semibold">
+              {formatMinutes(data.total_minutes)}
+            </span>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function TimeEntryRow({
+  taskId,
+  entry,
+  canManage,
+  onDelete,
+  deleting,
+}: {
+  taskId: string;
+  entry: {
+    id: string;
+    minutes: number;
+    spent_on: string;
+    note: string | null;
+    user: { id: string; name: string | null; email: string; image: string | null };
+  };
+  canManage: boolean;
+  onDelete: () => void;
+  deleting: boolean;
+}) {
+  const updateTimeLog = useUpdateTimeLog(taskId);
+  const [editing, setEditing] = useState(false);
+  const [minutes, setMinutes] = useState(String(entry.minutes));
+  const [spentOn, setSpentOn] = useState(entry.spent_on);
+  const [note, setNote] = useState(entry.note ?? "");
+
+  function startEditing() {
+    // Re-seed from the row rather than from stale draft state: the entry may
+    // have been refetched since this component last rendered an editor.
+    setMinutes(String(entry.minutes));
+    setSpentOn(entry.spent_on);
+    setNote(entry.note ?? "");
+    setEditing(true);
+  }
+
+  function save() {
+    const parsed = Number(minutes);
+    if (!Number.isInteger(parsed) || parsed < 1) return;
+
+    updateTimeLog.mutate(
+      {
+        timeLogId: entry.id,
+        minutes: parsed,
+        spentOn,
+        note: note.trim() || null,
+      },
+      { onSuccess: () => setEditing(false) },
+    );
+  }
+
+  if (editing) {
+    return (
+      <li className="py-2.5 first:pt-0 last:pb-0">
+        <div className="grid gap-2 sm:grid-cols-[6rem_10rem_minmax(0,1fr)]">
+          <Input
+            type="number"
+            min={1}
+            value={minutes}
+            aria-label="Minutes"
+            className="h-8 text-xs"
+            onChange={(event) => setMinutes(event.target.value)}
+          />
+          <Input
+            type="date"
+            value={spentOn}
+            max={new Date().toISOString().slice(0, 10)}
+            aria-label="Date worked"
+            className="h-8 min-w-0 text-xs"
+            onChange={(event) => setSpentOn(event.target.value)}
+          />
+          <Input
+            value={note}
+            maxLength={500}
+            placeholder="Note (optional)"
+            aria-label="Note"
+            className="h-8 text-xs"
+            onChange={(event) => setNote(event.target.value)}
+          />
+        </div>
+        <div className="mt-2 flex items-center gap-2">
+          <Button
+            size="sm"
+            className="h-7 text-xs"
+            disabled={updateTimeLog.isPending || !minutes}
+            onClick={save}
+          >
+            {updateTimeLog.isPending && (
+              <Loader2 className="size-3.5 animate-spin" />
+            )}
+            Save
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 text-xs"
+            disabled={updateTimeLog.isPending}
+            onClick={() => setEditing(false)}
+          >
+            Cancel
+          </Button>
+        </div>
+      </li>
+    );
+  }
+
+  return (
+    <li className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
+      <UserAvatar user={entry.user} size="xs" />
+
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-xs font-medium">
+          {displayName(entry.user)}
+        </p>
+        {entry.note ? (
+          <p className="text-muted-foreground truncate text-[11px]">
+            {entry.note}
+          </p>
+        ) : null}
+      </div>
+
+      <span className="text-muted-foreground shrink-0 text-[11px]">
+        {formatShortDate(entry.spent_on)}
+      </span>
+      <span className="tnum shrink-0 text-xs font-semibold">
+        {formatMinutes(entry.minutes)}
+      </span>
+
+      {canManage && (
+        <div className="flex shrink-0 items-center">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-muted-foreground hover:text-foreground size-7"
+            onClick={startEditing}
+            aria-label="Edit time entry"
+          >
+            <Pencil className="size-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-muted-foreground hover:text-danger size-7"
+            disabled={deleting}
+            onClick={onDelete}
+            aria-label="Remove time entry"
+          >
+            <Trash2 className="size-3.5" />
+          </Button>
+        </div>
+      )}
+    </li>
   );
 }
 

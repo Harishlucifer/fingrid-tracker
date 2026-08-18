@@ -478,23 +478,30 @@ export async function updateTask(
     await notifyAssignee(ctx, input.assigneeId ?? null);
   }
 
-  await recordActivity({
-    entityType: "TASK",
-    entityId: ctx.taskId,
-    projectId: ctx.projectId,
-    actorId: ctx.userId,
-    action:
-      input.statusId && input.statusId !== before.statusId
-        ? "task.status_changed"
-        : "task.updated",
-    // The assignee change is reported by its own event above, so it is excluded
-    // here rather than duplicated as an opaque id diff.
-    payload: diffPayload(before, {
-      ...input,
-      assigneeId: undefined,
-      completedAt,
-    }),
+  // The assignee change is reported by its own event above, so it is excluded
+  // here rather than duplicated as an opaque id diff.
+  const changes = diffPayload(before, {
+    ...input,
+    assigneeId: undefined,
+    completedAt,
   });
+
+  const statusChanged = Boolean(input.statusId && input.statusId !== before.statusId);
+
+  // A PATCH that changed nothing else — the common case when only the assignee
+  // moved, or when the client re-sent a field with its current value — must not
+  // leave a "task.updated" row behind. An audit entry whose diff is empty says
+  // nothing, and it is the noise that makes a task's history unreadable.
+  if (statusChanged || Object.keys(changes).length > 0) {
+    await recordActivity({
+      entityType: "TASK",
+      entityId: ctx.taskId,
+      projectId: ctx.projectId,
+      actorId: ctx.userId,
+      action: statusChanged ? "task.status_changed" : "task.updated",
+      payload: changes,
+    });
+  }
 
   return getTask(ctx.taskId);
 }

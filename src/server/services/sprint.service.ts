@@ -305,6 +305,102 @@ export async function createTimeLog(
   };
 }
 
+export const updateTimeLogSchema = z
+  .object({
+    minutes: z
+      .number()
+      .int("Log whole minutes")
+      .min(1, "Log at least one minute")
+      .max(24 * 60, "A single entry cannot exceed 24 hours")
+      .optional(),
+    spentOn: z.coerce.date().optional(),
+    note: z.string().max(500).nullable().optional(),
+  })
+  .refine(
+    (input) =>
+      input.minutes !== undefined ||
+      input.spentOn !== undefined ||
+      input.note !== undefined,
+    { message: "Nothing to change." },
+  );
+
+/**
+ * Correct an existing entry.
+ *
+ * Same permission as removing one — your own time, or an admin fixing the
+ * record — because an edit that could rewrite someone else's hours is a delete
+ * and a create wearing a different name. `spentOn` matters as much as
+ * `minutes`: moving a day is what pulls an entry into or out of a timesheet
+ * week, so it is re-validated against today exactly as a new entry is.
+ */
+export async function updateTimeLog(
+  ctx: AuthCtx,
+  timeLogId: string,
+  input: z.infer<typeof updateTimeLogSchema>,
+) {
+  const entry = await prisma.timeLog.findFirst({
+    where: { id: timeLogId, deletedAt: null },
+    select: {
+      id: true,
+      userId: true,
+      minutes: true,
+      spentOn: true,
+      note: true,
+      task: { select: { projectId: true } },
+    },
+  });
+  if (!entry) throw notFound("Time entry not found");
+
+  if (entry.userId !== ctx.userId && ctx.role !== "ADMIN") {
+    throw forbidden("You can only edit your own time entries.");
+  }
+
+  if (input.spentOn) {
+    const endOfToday = new Date();
+    endOfToday.setHours(23, 59, 59, 999);
+    if (input.spentOn > endOfToday) {
+      throw badRequest("You cannot log time against a future date.");
+    }
+  }
+
+  const updated = await prisma.timeLog.update({
+    where: { id: timeLogId },
+    data: {
+      ...(input.minutes === undefined ? {} : { minutes: input.minutes }),
+      ...(input.spentOn === undefined ? {} : { spentOn: input.spentOn }),
+      ...(input.note === undefined ? {} : { note: input.note }),
+    },
+    select: { id: true, minutes: true, spentOn: true, note: true },
+  });
+
+  await recordActivity({
+    entityType: "TIME_LOG",
+    entityId: timeLogId,
+    projectId: entry.task.projectId,
+    actorId: ctx.userId,
+    action: "time_log.updated",
+    payload: diffPayload(
+      {
+        minutes: entry.minutes,
+        spentOn: entry.spentOn.toISOString().slice(0, 10),
+        note: entry.note,
+      },
+      {
+        minutes: updated.minutes,
+        spentOn: updated.spentOn.toISOString().slice(0, 10),
+        note: updated.note,
+      },
+    ),
+  });
+
+  return {
+    id: updated.id,
+    minutes: updated.minutes,
+    spent_on: updated.spentOn.toISOString().slice(0, 10),
+    note: updated.note,
+  };
+}
+
 export async function deleteTimeLog(ctx: AuthCtx, timeLogId: string) {
   const entry = await prisma.timeLog.findFirst({
     where: { id: timeLogId, deletedAt: null },

@@ -176,6 +176,37 @@ or a prisma-free module.
 - Task numbers (`PMT-42`) increment `project.taskSeq` inside the same
   transaction as the insert, or concurrent creates collide on
   `uq_task_project_number`.
+- A task's detail screen puts comments, history and time behind **three tabs**,
+  and each is a different endpoint. History is `GET /api/v1/tasks/:id/activity`,
+  **not** the project feed at `/api/v1/activity` filtered in the browser — it is
+  scoped to `entity_type=TASK`, so it answers "who moved this, who assigned it"
+  without paging over every event in the project. Two consequences worth
+  keeping: ids are resolved to **names on the server** (the payload stores a
+  `statusId` because that is what the write changed, and a UUID is not history
+  anyone can read), and `task.reordered` is excluded — a same-column drag is a
+  board detail that would bury the moves that matter. `updateTask` also no
+  longer writes a `task.updated` row when the diff is empty; every reassignment
+  used to leave one behind, saying nothing. The payload reading lives in
+  `src/lib/task-activity.ts`, prisma-free and unit-tested, because three write
+  paths record a status change in three different shapes and all three have to
+  come out as one sentence.
+- **Attachments can belong to a comment**, via `attachment.comment_id`. Every
+  row still carries `task_id`, so authorization stays one hop; the column only
+  records where the file was posted. `listAttachments` therefore filters
+  `commentId: null` — the Files panel is the task's own files, and a comment
+  renders its own — while `attachment_count` deliberately counts both, because
+  the paperclip on a board card means "this task has files". Posting is two
+  requests, uploads first, then the comment **claims** them by id: the claim's
+  `where` is the whole authorization argument (same task, same uploader, not
+  already claimed) and a partial match is refused rather than quietly posting
+  fewer files than the author attached. Deleting a comment soft-deletes its
+  files and removes the bytes, because a file reachable only through a deleted
+  comment is bytes nobody can see or remove.
+- Time entries are editable: `PATCH /api/v1/time-logs/:id`, same permission as
+  the delete (your own, or an admin correcting the record) because an edit that
+  could rewrite someone else's hours is a delete and a create wearing a
+  different name. `spentOn` is re-validated against today exactly as a new entry
+  is — moving the day is what pulls an entry into or out of a timesheet week.
 - Board columns are editable at `…/projects/:id/statuses` and need **MANAGE**,
   not EDIT — they define the workflow everyone else works inside. Two couplings
   to respect: a column's `category` drives `task.completed_at`, so changing it
