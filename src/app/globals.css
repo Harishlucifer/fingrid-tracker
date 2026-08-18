@@ -16,6 +16,18 @@
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
+/*
+  Radix sets `data-orientation="horizontal"|"vertical"`, but Tailwind reads
+  `data-horizontal:` as the attribute `[data-horizontal]` — which nothing ever
+  sets. Without these two lines every orientation-dependent rule in
+  `components/ui/tabs.tsx` silently compiles to a selector that never matches,
+  and a horizontal tab strip lays itself out beside its panels instead of above
+  them. Registering the names is what makes the vendored primitive work as
+  written, rather than editing it and having the next shadcn sync undo the fix.
+*/
+@custom-variant data-horizontal (&[data-orientation="horizontal"]);
+@custom-variant data-vertical (&[data-orientation="vertical"]);
+
 :root {
   /* ---------- brand ---------- */
   --color-navy-900: #012756;

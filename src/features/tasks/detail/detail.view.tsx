@@ -43,12 +43,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { UserAvatar, displayName } from "@/components/user-avatar";
 import { TASK_PRIORITIES, TASK_TYPES } from "@/lib/constants";
@@ -117,88 +112,88 @@ export function TaskDetailView({
 
   return (
     <PreviewContext.Provider value={setPreviewing}>
-    <div className="mx-auto max-w-6xl space-y-5">
-      <nav aria-label="Breadcrumb">
-        <Link
-          href={`/projects/${task.project.id}/board`}
-          className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 text-xs font-medium transition-colors"
-        >
-          <ArrowLeft className="size-3.5" aria-hidden="true" />
-          {task.project.name} board
-        </Link>
-      </nav>
+      <div className="mx-auto max-w-6xl space-y-5">
+        <nav aria-label="Breadcrumb">
+          <Link
+            href={`/projects/${task.project.id}/board`}
+            className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 text-xs font-medium transition-colors"
+          >
+            <ArrowLeft className="size-3.5" aria-hidden="true" />
+            {task.project.name} board
+          </Link>
+        </nav>
 
-      <header className="space-y-3 border-b pb-5">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-muted-foreground font-mono text-xs font-semibold tracking-wide">
-            {task.ref}
-          </span>
-          <StatusBadge
-            category={task.status.category}
-            name={task.status.name}
-          />
-          <TypeBadge type={task.type} />
-          <PriorityBadge priority={task.priority} />
-        </div>
+        <header className="space-y-3 border-b pb-5">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-muted-foreground font-mono text-xs font-semibold tracking-wide">
+              {task.ref}
+            </span>
+            <StatusBadge
+              category={task.status.category}
+              name={task.status.name}
+            />
+            <TypeBadge type={task.type} />
+            <PriorityBadge priority={task.priority} />
+          </div>
 
-        <TaskTitle taskId={taskId} task={task} canEdit={canEdit} />
+          <TaskTitle taskId={taskId} task={task} canEdit={canEdit} />
 
-        <div className="text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
-          <span className="flex items-center gap-1.5">
-            {task.assignee ? (
-              <UserAvatar user={task.assignee} size="xs" />
-            ) : (
-              <span className="bg-secondary flex size-6 items-center justify-center rounded-full">
-                <UserRound className="size-3" aria-hidden="true" />
+          <div className="text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+            <span className="flex items-center gap-1.5">
+              {task.assignee ? (
+                <UserAvatar user={task.assignee} size="xs" />
+              ) : (
+                <span className="bg-secondary flex size-6 items-center justify-center rounded-full">
+                  <UserRound className="size-3" aria-hidden="true" />
+                </span>
+              )}
+              <span className="text-foreground font-medium">
+                {task.assignee ? displayName(task.assignee) : "Unassigned"}
               </span>
-            )}
-            <span className="text-foreground font-medium">
-              {task.assignee ? displayName(task.assignee) : "Unassigned"}
             </span>
-          </span>
-          <DueDate dueDate={task.due_date} completedAt={task.completed_at} />
-          {task.estimate_minutes ? (
+            <DueDate dueDate={task.due_date} completedAt={task.completed_at} />
+            {task.estimate_minutes ? (
+              <span className="inline-flex items-center gap-1.5">
+                <Clock3 className="size-3.5" aria-hidden="true" />
+                {formatMinutes(task.estimate_minutes)} estimated
+              </span>
+            ) : null}
             <span className="inline-flex items-center gap-1.5">
-              <Clock3 className="size-3.5" aria-hidden="true" />
-              {formatMinutes(task.estimate_minutes)} estimated
+              <MessageSquare className="size-3.5" aria-hidden="true" />
+              {task.comment_count} comments
             </span>
-          ) : null}
-          <span className="inline-flex items-center gap-1.5">
-            <MessageSquare className="size-3.5" aria-hidden="true" />
-            {task.comment_count} comments
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <Paperclip className="size-3.5" aria-hidden="true" />
-            {task.attachment_count} files
-          </span>
+            <span className="inline-flex items-center gap-1.5">
+              <Paperclip className="size-3.5" aria-hidden="true" />
+              {task.attachment_count} files
+            </span>
+          </div>
+        </header>
+
+        <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_20rem]">
+          <main className="min-w-0 space-y-5">
+            <DescriptionCard taskId={taskId} task={task} canEdit={canEdit} />
+            <AttachmentsCard
+              taskId={taskId}
+              canEdit={canEdit}
+              currentUserId={currentUserId}
+            />
+            <TaskTabsCard
+              taskId={taskId}
+              canEdit={canEdit}
+              currentUserId={currentUserId}
+            />
+          </main>
+
+          <aside className="order-first space-y-5 xl:sticky xl:top-6 xl:order-last">
+            <PropertiesCard taskId={taskId} task={task} canEdit={canEdit} />
+          </aside>
         </div>
-      </header>
 
-      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_20rem]">
-        <main className="min-w-0 space-y-5">
-          <DescriptionCard taskId={taskId} task={task} canEdit={canEdit} />
-          <AttachmentsCard
-            taskId={taskId}
-            canEdit={canEdit}
-            currentUserId={currentUserId}
-          />
-          <TaskTabsCard
-            taskId={taskId}
-            canEdit={canEdit}
-            currentUserId={currentUserId}
-          />
-        </main>
-
-        <aside className="order-first space-y-5 xl:sticky xl:top-6 xl:order-last">
-          <PropertiesCard taskId={taskId} task={task} canEdit={canEdit} />
-        </aside>
+        <AttachmentPreviewDialog
+          attachment={previewing}
+          onClose={() => setPreviewing(null)}
+        />
       </div>
-
-      <AttachmentPreviewDialog
-        attachment={previewing}
-        onClose={() => setPreviewing(null)}
-      />
-    </div>
     </PreviewContext.Provider>
   );
 }
@@ -828,7 +823,7 @@ function TaskTabsCard({
     <Card size="sm" className="shadow-card">
       <Tabs defaultValue="comments" className="gap-0">
         <CardHeader className="border-b">
-          <TabsList className="w-full">
+          <TabsList>
             <TabsTrigger value="comments">
               <MessageSquare aria-hidden="true" />
               Comments
@@ -932,7 +927,10 @@ function CommentsTab({
         <Skeleton className="h-16 w-full" />
       ) : roots.length === 0 ? (
         <div className="text-muted-foreground flex min-h-20 flex-col items-center justify-center rounded-lg border border-dashed text-sm">
-          <MessageSquare className="mb-2 size-5 opacity-40" aria-hidden="true" />
+          <MessageSquare
+            className="mb-2 size-5 opacity-40"
+            aria-hidden="true"
+          />
           No comments yet.
         </div>
       ) : (
@@ -1365,59 +1363,57 @@ function TimeLogTab({
   return (
     <div className="space-y-4">
       {canEdit && (
-        <div className="bg-secondary/45 space-y-2 rounded-lg p-3">
-          <div className="grid gap-2 sm:grid-cols-[6rem_10rem_minmax(0,1fr)_auto]">
-            <Input
-              type="number"
-              min={1}
-              placeholder="Minutes"
-              value={minutes}
-              aria-label="Minutes"
-              onChange={(event) => setMinutes(event.target.value)}
-              className="h-8 text-xs"
-            />
-            <Input
-              type="date"
-              value={spentOn}
-              max={today}
-              aria-label="Date worked"
-              onChange={(event) => setSpentOn(event.target.value)}
-              className="h-8 min-w-0 text-xs"
-            />
-            <Input
-              placeholder="What did you work on? (optional)"
-              value={note}
-              maxLength={500}
-              aria-label="Note"
-              onChange={(event) => setNote(event.target.value)}
-              className="h-8 text-xs"
-            />
-            <Button
-              size="sm"
-              className="h-8 text-xs"
-              disabled={createTimeLog.isPending || !minutes}
-              onClick={() =>
-                createTimeLog.mutate(
-                  {
-                    minutes: Number(minutes),
-                    spentOn,
-                    ...(note.trim() ? { note: note.trim() } : {}),
+        <div className="bg-secondary/45 flex flex-wrap items-center gap-2 rounded-lg p-2.5">
+          <Input
+            type="number"
+            min={1}
+            placeholder="Minutes"
+            value={minutes}
+            aria-label="Minutes"
+            onChange={(event) => setMinutes(event.target.value)}
+            className="h-8 w-24 text-xs"
+          />
+          <Input
+            type="date"
+            value={spentOn}
+            max={today}
+            aria-label="Date worked"
+            onChange={(event) => setSpentOn(event.target.value)}
+            className="h-8 w-40 text-xs"
+          />
+          <Input
+            placeholder="What did you work on? (optional)"
+            value={note}
+            maxLength={500}
+            aria-label="Note"
+            onChange={(event) => setNote(event.target.value)}
+            className="h-8 w-full min-w-40 flex-1 text-xs sm:w-auto"
+          />
+          <Button
+            size="sm"
+            className="h-8 text-xs"
+            disabled={createTimeLog.isPending || !minutes}
+            onClick={() =>
+              createTimeLog.mutate(
+                {
+                  minutes: Number(minutes),
+                  spentOn,
+                  ...(note.trim() ? { note: note.trim() } : {}),
+                },
+                {
+                  onSuccess: () => {
+                    setMinutes("");
+                    setNote("");
                   },
-                  {
-                    onSuccess: () => {
-                      setMinutes("");
-                      setNote("");
-                    },
-                  },
-                )
-              }
-            >
-              {createTimeLog.isPending && (
-                <Loader2 className="size-4 animate-spin" />
-              )}
-              Log time
-            </Button>
-          </div>
+                },
+              )
+            }
+          >
+            {createTimeLog.isPending && (
+              <Loader2 className="size-4 animate-spin" />
+            )}
+            Log time
+          </Button>
         </div>
       )}
 
@@ -1471,7 +1467,12 @@ function TimeEntryRow({
     minutes: number;
     spent_on: string;
     note: string | null;
-    user: { id: string; name: string | null; email: string; image: string | null };
+    user: {
+      id: string;
+      name: string | null;
+      email: string;
+      image: string | null;
+    };
   };
   canManage: boolean;
   onDelete: () => void;
@@ -1510,13 +1511,13 @@ function TimeEntryRow({
   if (editing) {
     return (
       <li className="py-2.5 first:pt-0 last:pb-0">
-        <div className="grid gap-2 sm:grid-cols-[6rem_10rem_minmax(0,1fr)]">
+        <div className="flex flex-wrap items-center gap-2">
           <Input
             type="number"
             min={1}
             value={minutes}
             aria-label="Minutes"
-            className="h-8 text-xs"
+            className="h-8 w-24 text-xs"
             onChange={(event) => setMinutes(event.target.value)}
           />
           <Input
@@ -1524,7 +1525,7 @@ function TimeEntryRow({
             value={spentOn}
             max={new Date().toISOString().slice(0, 10)}
             aria-label="Date worked"
-            className="h-8 min-w-0 text-xs"
+            className="h-8 w-40 text-xs"
             onChange={(event) => setSpentOn(event.target.value)}
           />
           <Input
@@ -1532,7 +1533,7 @@ function TimeEntryRow({
             maxLength={500}
             placeholder="Note (optional)"
             aria-label="Note"
-            className="h-8 text-xs"
+            className="h-8 w-full min-w-40 flex-1 text-xs sm:w-auto"
             onChange={(event) => setNote(event.target.value)}
           />
         </div>
