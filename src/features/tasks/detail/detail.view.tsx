@@ -3,17 +3,22 @@
 import {
   ArrowLeft,
   ArrowRight,
+  Ban,
   CheckCircle2,
   Clock3,
   Download,
   FileText,
   History,
+  Inbox,
   Loader2,
   MessageSquare,
   Paperclip,
   Pencil,
+  PlayCircle,
   Send,
+  SignpostBig,
   Trash2,
+  Undo2,
   Upload,
   UserRound,
   X,
@@ -46,10 +51,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { UserAvatar, displayName } from "@/components/user-avatar";
-import { TASK_PRIORITIES, TASK_TYPES } from "@/lib/constants";
+import {
+  TASK_PRIORITIES,
+  TASK_TYPES,
+  type TaskStage,
+} from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 import { useProject } from "../../projects/board/board.api";
+import { useSetTaskStage } from "../../projects/backlog/backlog.api";
 import {
   type Attachment,
   type TaskActivityEntry,
@@ -84,10 +94,12 @@ const PreviewContext = createContext<(attachment: Attachment) => void>(
 export function TaskDetailView({
   taskId,
   canEdit,
+  canManage,
   currentUserId,
 }: {
   taskId: string;
   canEdit: boolean;
+  canManage: boolean;
   currentUserId: string;
 }) {
   const { data: task, isLoading } = useTask(taskId);
@@ -132,6 +144,7 @@ export function TaskDetailView({
               category={task.status.category}
               name={task.status.name}
             />
+            <StageBadge stage={task.stage} />
             <TypeBadge type={task.type} />
             <PriorityBadge priority={task.priority} />
           </div>
@@ -185,6 +198,12 @@ export function TaskDetailView({
           </main>
 
           <aside className="order-first space-y-5 xl:sticky xl:top-6 xl:order-last">
+            <StageCard
+              taskId={taskId}
+              task={task}
+              canEdit={canEdit}
+              canManage={canManage}
+            />
             <PropertiesCard taskId={taskId} task={task} canEdit={canEdit} />
           </aside>
         </div>
@@ -199,6 +218,222 @@ export function TaskDetailView({
 }
 
 type Task = NonNullable<ReturnType<typeof useTask>["data"]>;
+
+/**
+ * Where the task sits relative to the board.
+ *
+ * Only shown when it is somewhere other than on it: a badge reading "On the
+ * board" beside a task you are looking at on the board is noise, whereas
+ * "Backlog" and "Blocked" are exactly what a reader needs to know before they
+ * wonder why they cannot find the card.
+ */
+function StageBadge({ stage }: { stage: TaskStage }) {
+  if (stage === "ACTIVE") return null;
+
+  const label =
+    stage === "BACKLOG"
+      ? "Backlog"
+      : stage === "COMPLETED"
+        ? "Completed"
+        : "Blocked";
+
+  return (
+    <Badge
+      variant="outline"
+      className={cn(
+        "gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium",
+        stage === "COMPLETED"
+          ? "border-success/25 bg-success-bg text-success"
+          : stage === "BLOCKED"
+            ? "border-danger/25 bg-danger/10 text-danger"
+            : "border-border bg-secondary text-muted-foreground",
+      )}
+    >
+      {stage === "COMPLETED" ? (
+        <CheckCircle2 className="size-3" aria-hidden="true" />
+      ) : stage === "BLOCKED" ? (
+        <Ban className="size-3" aria-hidden="true" />
+      ) : (
+        <Inbox className="size-3" aria-hidden="true" />
+      )}
+      {label}
+    </Badge>
+  );
+}
+
+/**
+ * The gates at either end of the board.
+ *
+ * Two different acts sit in one card because they are the same question asked at
+ * different moments — "should this be on the board?" — but they answer to
+ * different permissions, and the card only offers what the viewer can actually
+ * do. Sign-off additionally needs the task to be in a Done column; the server
+ * refuses otherwise, so rather than show a button that will fail, the card says
+ * why it is not there yet.
+ */
+function StageCard({
+  taskId,
+  task,
+  canEdit,
+  canManage,
+}: {
+  taskId: string;
+  task: Task;
+  canEdit: boolean;
+  canManage: boolean;
+}) {
+  // Keyed by project, because that is what the hook invalidates — the board and
+  // the backlog this task just left or joined.
+  const setStage = useSetTaskStage(task.project.id);
+  const [reason, setReason] = useState("");
+
+  const inDone = task.status.category === "DONE";
+  const stage = task.stage;
+
+  // A VIEWER gets the badge in the header and nothing else to press.
+  if (!canEdit) return null;
+
+  function move(next: TaskStage) {
+    setStage.mutate(
+      { taskId, stage: next, reason: reason.trim() || undefined },
+      { onSuccess: () => setReason("") },
+    );
+  }
+
+  return (
+    <Card size="sm" className="shadow-card">
+      <CardHeader className="border-b">
+        <CardTitle className="flex items-center gap-2">
+          <SignpostBig
+            className="text-muted-foreground size-4"
+            aria-hidden="true"
+          />
+          Stage
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-muted-foreground text-xs leading-relaxed">
+          {stage === "BACKLOG"
+            ? "Filed but not started. It is not on the board until you mark it ready."
+            : stage === "ACTIVE"
+              ? inDone
+                ? "On the board, waiting to be signed off."
+                : "On the board."
+              : stage === "COMPLETED"
+                ? "Signed off and off the board. It still counts in every report."
+                : "Blocked and off the board. Reopen it when it can move again."}
+        </p>
+
+        {stage === "BACKLOG" && (
+          <Button
+            size="sm"
+            className="w-full"
+            disabled={setStage.isPending}
+            onClick={() => move("ACTIVE")}
+          >
+            {setStage.isPending ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <PlayCircle className="size-4" />
+            )}
+            Mark ready
+          </Button>
+        )}
+
+        {stage === "ACTIVE" && (
+          <div className="space-y-2">
+            {canManage && inDone && (
+              <>
+                <Textarea
+                  rows={2}
+                  value={reason}
+                  maxLength={500}
+                  className="resize-y text-xs"
+                  onChange={(event) => setReason(event.target.value)}
+                  placeholder="Why? (optional — worth writing when blocking)"
+                />
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    className="flex-1"
+                    disabled={setStage.isPending}
+                    onClick={() => move("COMPLETED")}
+                  >
+                    <CheckCircle2 className="size-4" />
+                    Complete
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-1"
+                    disabled={setStage.isPending}
+                    onClick={() => move("BLOCKED")}
+                  >
+                    <Ban className="size-4" />
+                    Block
+                  </Button>
+                </div>
+              </>
+            )}
+
+            {canManage && !inDone && (
+              <p className="text-muted-foreground rounded-lg border border-dashed px-3 py-2 text-xs">
+                Move this task to a Done column to sign it off.
+              </p>
+            )}
+
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-muted-foreground w-full"
+              disabled={setStage.isPending}
+              onClick={() => move("BACKLOG")}
+            >
+              <Undo2 className="size-4" />
+              Send back to backlog
+            </Button>
+          </div>
+        )}
+
+        {(stage === "COMPLETED" || stage === "BLOCKED") &&
+          (canManage ? (
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="flex-1"
+                disabled={setStage.isPending}
+                onClick={() => move("ACTIVE")}
+              >
+                <Undo2 className="size-4" />
+                Reopen
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="flex-1"
+                disabled={setStage.isPending}
+                onClick={() =>
+                  move(stage === "COMPLETED" ? "BLOCKED" : "COMPLETED")
+                }
+              >
+                {stage === "COMPLETED" ? (
+                  <Ban className="size-4" />
+                ) : (
+                  <CheckCircle2 className="size-4" />
+                )}
+                {stage === "COMPLETED" ? "Block instead" : "Complete instead"}
+              </Button>
+            </div>
+          ) : (
+            <p className="text-muted-foreground rounded-lg border border-dashed px-3 py-2 text-xs">
+              Only a project lead can reopen this.
+            </p>
+          ))}
+      </CardContent>
+    </Card>
+  );
+}
 
 function StatusBadge({ category, name }: { category: string; name: string }) {
   const Icon = category === "DONE" ? CheckCircle2 : Clock3;
@@ -1230,11 +1465,14 @@ const ACTIVITY_VERBS: Record<string, string> = {
   "task.assigned": "assigned this task",
   "task.unassigned": "unassigned this task",
   "task.updated": "updated this task",
+  "task.stage_changed": "moved this task",
   "task.deleted": "deleted this task",
 };
 
 const ACTIVITY_FIELD_LABELS: Record<string, string> = {
   status: "Status",
+  stage: "Stage",
+  reason: "Reason",
   assignee: "Assignee",
   sprint: "Sprint",
   title: "Title",

@@ -148,3 +148,40 @@ describe("formatActivityValue", () => {
     expect(formatActivityValue("sprint", "sprint-1", NAMES)).toBe("Sprint 4");
   });
 });
+
+describe("stage changes", () => {
+  it("reads a stage change as words rather than database values", () => {
+    expect(
+      describeTaskChanges(
+        "task.stage_changed",
+        { from: "BACKLOG", to: "ACTIVE" },
+        NAMES,
+      ),
+    ).toEqual([{ field: "stage", from: "the backlog", to: "the board" }]);
+  });
+
+  // The point of BLOCKED is that somebody comes back to it; "blocked" with no
+  // reason tells them nothing about what to do.
+  it("carries the reason a sign-off decision was made", () => {
+    expect(
+      describeTaskChanges(
+        "task.stage_changed",
+        { from: "ACTIVE", to: "BLOCKED", reason: "Waiting on the vendor SDK" },
+        NAMES,
+      ),
+    ).toEqual([
+      { field: "stage", from: "the board", to: "blocked" },
+      { field: "reason", from: null, to: "Waiting on the vendor SDK" },
+    ]);
+  });
+
+  it("omits the reason line when none was given", () => {
+    expect(
+      describeTaskChanges(
+        "task.stage_changed",
+        { from: "ACTIVE", to: "COMPLETED" },
+        NAMES,
+      ),
+    ).toEqual([{ field: "stage", from: "the board", to: "completed" }]);
+  });
+});

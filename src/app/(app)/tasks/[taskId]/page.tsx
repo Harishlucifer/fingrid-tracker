@@ -18,6 +18,9 @@ export default async function TaskPage({
     <TaskDetailView
       taskId={taskId}
       canEdit={atLeast(ctx.access, "EDIT")}
+      // Signing work off is a project-shaping act, on the same footing as
+      // managing sprints or board columns — see stageTransition.
+      canManage={atLeast(ctx.access, "MANAGE")}
       currentUserId={ctx.userId}
     />
   );

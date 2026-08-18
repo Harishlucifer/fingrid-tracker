@@ -207,6 +207,38 @@ or a prisma-free module.
   could rewrite someone else's hours is a delete and a create wearing a
   different name. `spentOn` is re-validated against today exactly as a new entry
   is — moving the day is what pulls an entry into or out of a timesheet week.
+- **`task.stage` is a third axis, and the one most likely to be confused with
+  the other two.** `status_id` says which column, `completed_at` says when the
+  task reached a DONE column, and `stage` says only whether the board shows it
+  at all (`BACKLOG` / `ACTIVE` / `COMPLETED` / `BLOCKED` — see `TASK_STAGES`).
+  So `stage = "COMPLETED"` is **not** `completed_at`: signing a task off leaves
+  that timestamp alone, and **no report may filter on `stage`**, or last
+  quarter's throughput would change because somebody tidied the board today.
+  The board is `stage: "ACTIVE"` in `getBoard` **and** `getOverallBoard`; the
+  backlog screen is `stage: "BACKLOG"`; everything else is reachable from the
+  List tab's stage filter and nowhere else.
+- The gate is why `assertWipAllows` counts `stage: "ACTIVE"` as well as
+  `deleted_at: null`. Counting signed-off tasks would let a Done column fill to
+  its limit permanently and then refuse every future move into it — a limit
+  nobody could clear, because the tasks holding it are no longer on the board to
+  move out.
+- Stage transitions live in `src/lib/task-stage.ts`, prisma-free and unit-tested
+  over every `TASK_STAGES²` pair, so adding a stage makes each new pair illegal
+  until somebody writes it down. Two rules are worth knowing without reading it:
+  sign-off is only legal **from a DONE-category column** (otherwise "Done" means
+  nothing), and both terminal stages can be reopened (`BLOCKED` exists so that
+  someone comes back to it).
+- `PATCH /api/v1/tasks/:id/stage` guards at **EDIT** and enforces **MANAGE**
+  inside the service, because the level required depends on the target stage —
+  marking work ready is ordinary editing, signing it off is not — and a guard
+  runs before the body is parsed. Same shape as the comment and time-log routes.
+  `POST /api/v1/projects/:id/sign-off` is the bulk form and guards MANAGE at the
+  route, because nothing cheaper hides in it. It writes **one** activity row,
+  not one per task, for the same reason `updateProjectStatus` does.
+- New tasks default to `stage: "BACKLOG"` so nothing reaches the board
+  unreviewed. The board's own per-column "add task" dialog passes `ACTIVE`
+  explicitly — dropping a card into a column *is* the statement that the work is
+  live, and a button that filed it out of sight would be a strange one.
 - Board columns are editable at `…/projects/:id/statuses` and need **MANAGE**,
   not EDIT — they define the workflow everyone else works inside. Two couplings
   to respect: a column's `category` drives `task.completed_at`, so changing it

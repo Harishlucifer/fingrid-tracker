@@ -4,14 +4,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { api, buildQuery } from "@/lib/api-client";
+import type { TaskStage } from "@/lib/constants";
 
 import type { TaskCard } from "../board/board.types";
 
 const URL_TASKS = "/api/v1/tasks";
 const URL_PROJECTS = "/api/v1/projects";
-
-/** Sentinel the API understands as "no sprint" — see NO_SPRINT server-side. */
-export const NO_SPRINT = "none";
 
 export type SprintSummary = {
   id: string;
@@ -26,7 +24,14 @@ export type SprintSummary = {
 
 export const backlogKey = (projectId: string) => ["backlog", projectId] as const;
 
-/** Tasks in this project with no sprint assigned. */
+/**
+ * Work that has not been let onto the board yet.
+ *
+ * `stage=BACKLOG`, not `sprintId=none`. Those used to be the same list by
+ * accident — "backlog" meant only "no sprint" — which is why everything anybody
+ * filed appeared in To Do immediately whether or not it had been looked at. The
+ * backlog is now a stage of its own, and this screen is the gate out of it.
+ */
 export function useBacklog(projectId: string) {
   return useQuery({
     queryKey: backlogKey(projectId),
@@ -34,10 +39,55 @@ export function useBacklog(projectId: string) {
       api.getPaged<TaskCard[]>(
         `${URL_TASKS}${buildQuery({
           projectId,
-          sprintId: NO_SPRINT,
+          stage: "BACKLOG",
           per_page: 100,
         })}`,
       ),
+  });
+}
+
+/**
+ * Put a task on the board, or take it back off.
+ *
+ * Invalidates the same broad set as `useAssignSprint` and for the same reason:
+ * the task leaves one list and joins another, and a partial update leaves the
+ * screen showing it in both.
+ */
+export function useSetTaskStage(projectId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      taskId,
+      stage,
+      reason,
+    }: {
+      taskId: string;
+      stage: TaskStage;
+      reason?: string;
+    }) =>
+      api.patch<TaskCard>(`${URL_TASKS}/${taskId}/stage`, { stage, reason }),
+    onSuccess: (task) => {
+      toast.success(
+        task.stage === "ACTIVE"
+          ? `${task.ref} is ready and on the board.`
+          : task.stage === "BACKLOG"
+            ? `${task.ref} returned to the backlog.`
+            : task.stage === "COMPLETED"
+              ? `${task.ref} completed.`
+              : `${task.ref} blocked.`,
+      );
+      void queryClient.invalidateQueries({ queryKey: backlogKey(projectId) });
+      void queryClient.invalidateQueries({ queryKey: ["sprint-tasks"] });
+      void queryClient.invalidateQueries({ queryKey: ["board", projectId] });
+      void queryClient.invalidateQueries({ queryKey: ["overall-board"] });
+      void queryClient.invalidateQueries({ queryKey: ["task-list"] });
+      void queryClient.invalidateQueries({ queryKey: ["task", task.id] });
+      void queryClient.invalidateQueries({
+        queryKey: ["task-activity", task.id],
+      });
+    },
+    onError: (error: Error) => toast.error(error.message),
   });
 }
 

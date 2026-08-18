@@ -1,10 +1,11 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { ListChecks } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
+import { Pager } from "@/components/pager";
 import { TypeBadge } from "@/components/task-meta";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -26,7 +27,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { api, buildQuery } from "@/lib/api-client";
-import { TASK_PRIORITIES, TASK_TYPES } from "@/lib/constants";
+import { TASK_PRIORITIES, TASK_STAGES, TASK_TYPES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 import { useProject } from "../board/board.api";
@@ -34,17 +35,35 @@ import type { TaskCard } from "../board/board.types";
 
 const URL_TASKS = "/api/v1/tasks";
 
-/** Flat, filterable table view of a project's tasks — the board's counterpart. */
+const PER_PAGE = 50;
+
+/** How each stage reads in the filter — the database values are not English. */
+const STAGE_LABELS: Record<string, string> = {
+  BACKLOG: "Backlog",
+  ACTIVE: "On the board",
+  COMPLETED: "Completed",
+  BLOCKED: "Blocked",
+};
+
+/**
+ * Flat, filterable table view of a project's tasks — the board's counterpart.
+ *
+ * Also where work that has left the board is found again. The board shows only
+ * `stage = ACTIVE`, so the backlog and everything signed off are reachable
+ * nowhere else; the stage filter here is the way back to them.
+ */
 export function TaskListView({ projectId }: { projectId: string }) {
   const [search, setSearch] = useState("");
   const [statusId, setStatusId] = useState("all");
   const [type, setType] = useState("all");
   const [priority, setPriority] = useState("all");
+  const [stage, setStage] = useState("all");
   const [openOnly, setOpenOnly] = useState(false);
+  const [page, setPage] = useState(1);
 
   const { data: project } = useProject(projectId);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching } = useQuery({
     queryKey: [
       "task-list",
       projectId,
@@ -52,7 +71,9 @@ export function TaskListView({ projectId }: { projectId: string }) {
       statusId,
       type,
       priority,
+      stage,
       openOnly,
+      page,
     ] as const,
     queryFn: () =>
       api.getPaged<TaskCard[]>(
@@ -62,25 +83,42 @@ export function TaskListView({ projectId }: { projectId: string }) {
           statusId: statusId === "all" ? undefined : statusId,
           type: type === "all" ? undefined : type,
           priority: priority === "all" ? undefined : priority,
+          stage: stage === "all" ? undefined : stage,
           open: openOnly ? "true" : undefined,
-          per_page: 100,
+          page,
+          per_page: PER_PAGE,
         })}`,
       ),
+    // Paging otherwise blanks the table on every click, because each page is a
+    // different cache key with nothing in it yet.
+    placeholderData: keepPreviousData,
   });
 
   const tasks = data?.data ?? [];
+
+  /**
+   * Every filter resets to page one. Without this, narrowing a 300-row list to
+   * three results while sitting on page five shows an empty table and reads as
+   * "no matches" — the one wrong answer the filter can give.
+   */
+  function filter<T>(set: (value: T) => void) {
+    return (value: T) => {
+      set(value);
+      setPage(1);
+    };
+  }
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-2">
         <Input
           value={search}
-          onChange={(event) => setSearch(event.target.value)}
+          onChange={(event) => filter(setSearch)(event.target.value)}
           placeholder="Search titles"
           className="w-full sm:w-64"
         />
 
-        <Select value={statusId} onValueChange={setStatusId}>
+        <Select value={statusId} onValueChange={filter(setStatusId)}>
           <SelectTrigger className="w-40">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
@@ -94,7 +132,7 @@ export function TaskListView({ projectId }: { projectId: string }) {
           </SelectContent>
         </Select>
 
-        <Select value={type} onValueChange={setType}>
+        <Select value={type} onValueChange={filter(setType)}>
           <SelectTrigger className="w-32">
             <SelectValue placeholder="Type" />
           </SelectTrigger>
@@ -108,7 +146,7 @@ export function TaskListView({ projectId }: { projectId: string }) {
           </SelectContent>
         </Select>
 
-        <Select value={priority} onValueChange={setPriority}>
+        <Select value={priority} onValueChange={filter(setPriority)}>
           <SelectTrigger className="w-36">
             <SelectValue placeholder="Priority" />
           </SelectTrigger>
@@ -122,11 +160,25 @@ export function TaskListView({ projectId }: { projectId: string }) {
           </SelectContent>
         </Select>
 
+        <Select value={stage} onValueChange={filter(setStage)}>
+          <SelectTrigger className="w-40">
+            <SelectValue placeholder="Stage" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Every stage</SelectItem>
+            {TASK_STAGES.map((value) => (
+              <SelectItem key={value} value={value}>
+                {STAGE_LABELS[value] ?? value}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
         <label className="text-muted-foreground flex items-center gap-2 text-sm">
           <input
             type="checkbox"
             checked={openOnly}
-            onChange={(event) => setOpenOnly(event.target.checked)}
+            onChange={(event) => filter(setOpenOnly)(event.target.checked)}
             className="accent-accent size-4"
           />
           Open only
@@ -153,6 +205,7 @@ export function TaskListView({ projectId }: { projectId: string }) {
                     <TableHead className="w-24">Ref</TableHead>
                     <TableHead>Title</TableHead>
                     <TableHead className="w-32">Status</TableHead>
+                    <TableHead className="w-28">Stage</TableHead>
                     <TableHead className="w-24">Type</TableHead>
                     <TableHead className="w-24">Priority</TableHead>
                     <TableHead className="w-40">Assignee</TableHead>
@@ -184,6 +237,9 @@ export function TaskListView({ projectId }: { projectId: string }) {
                             {task.status.name}
                           </Badge>
                         </TableCell>
+                        <TableCell className="text-muted-foreground text-xs">
+                          {STAGE_LABELS[task.stage] ?? task.stage}
+                        </TableCell>
                         <TableCell>
                           <TypeBadge type={task.type} />
                         </TableCell>
@@ -210,6 +266,14 @@ export function TaskListView({ projectId }: { projectId: string }) {
           )}
         </CardContent>
       </Card>
+
+      {data && (
+        <Pager
+          meta={data.meta}
+          disabled={isFetching}
+          onPageChange={setPage}
+        />
+      )}
     </div>
   );
 }

@@ -15,14 +15,22 @@ import {
   STATUS_CATEGORIES,
   statusCategorySchema,
   taskPrioritySchema,
+  taskStageSchema,
   taskTypeSchema,
+  type TaskStage,
   type WipPolicy,
 } from "@/lib/constants";
+import { atLeast } from "@/lib/permissions";
+import {
+  describeStage,
+  notInDoneMessage,
+  stageTransition,
+} from "@/lib/task-stage";
 import { breachesWipLimit, wipLimitMessage } from "@/lib/wip-policy";
 import type { AuthCtx, ProjectAuthCtx } from "@/server/auth/guards";
 import { prisma } from "@/server/db/prisma";
 import { enqueueTaskAssigned } from "@/server/notifications/dispatch";
-import { AppError, badRequest, notFound } from "@/server/http/errors";
+import { AppError, badRequest, forbidden, notFound } from "@/server/http/errors";
 import { ErrorCodes } from "@/server/http/codes";
 import { buildMeta, type Pagination } from "@/server/http/pagination";
 
@@ -35,6 +43,13 @@ export const createTaskSchema = z.object({
   statusId: z.string().min(1).optional(),
   type: taskTypeSchema.default("STORY"),
   priority: taskPrioritySchema.default("MEDIUM"),
+  /**
+   * Defaults to BACKLOG: filing a task should go through the ready gate, or the
+   * gate is one the board's own "add task" button quietly routes around. That
+   * button is the caller that passes ACTIVE explicitly, because dropping a card
+   * straight into a column IS the statement that the work is live.
+   */
+  stage: taskStageSchema.default("BACKLOG"),
   assigneeId: z.string().min(1).nullable().optional(),
   sprintId: z.string().min(1).nullable().optional(),
   dueDate: z.coerce.date().nullable().optional(),
@@ -72,6 +87,12 @@ export const listTasksQuerySchema = z.object({
   sprintId: z.string().optional(),
   type: taskTypeSchema.optional(),
   priority: taskPrioritySchema.optional(),
+  /**
+   * Where the task sits relative to the board. This is what makes the List tab
+   * the place signed-off work can be found again — the board deliberately no
+   * longer shows it.
+   */
+  stage: taskStageSchema.optional(),
   q: z.string().optional(),
   open: z.coerce.boolean().optional(),
 });
@@ -86,6 +107,7 @@ const taskSelect = {
   description: true,
   type: true,
   priority: true,
+  stage: true,
   position: true,
   dueDate: true,
   estimateMin: true,
@@ -112,6 +134,7 @@ type TaskRow = {
   description: string | null;
   type: string;
   priority: string;
+  stage: string;
   position: number;
   dueDate: Date | null;
   estimateMin: number | null;
@@ -146,6 +169,8 @@ function toDto(row: TaskRow) {
     description: row.description,
     type: row.type,
     priority: row.priority,
+    /** BACKLOG | ACTIVE | COMPLETED | BLOCKED — whether the board shows it. */
+    stage: row.stage,
     position: row.position,
     due_date: row.dueDate?.toISOString() ?? null,
     estimate_minutes: row.estimateMin,
@@ -208,6 +233,7 @@ export async function listTasks(
       : {}),
     ...(filters.type ? { type: filters.type } : {}),
     ...(filters.priority ? { priority: filters.priority } : {}),
+    ...(filters.stage ? { stage: filters.stage } : {}),
     ...(filters.open ? { completedAt: null } : {}),
     ...(filters.q ? { title: { contains: filters.q } } : {}),
     project: { deletedAt: null },
@@ -230,7 +256,20 @@ export async function listTasks(
   };
 }
 
-/** Every live task in a project, grouped by column — the board query. */
+/**
+ * The board: every task in a project that is actually live, grouped by column.
+ *
+ * `stage: "ACTIVE"` is the whole reason this query stays bounded. Without it the
+ * board is every task the project has ever had — a backlog nobody has started
+ * mixed into To Do, and every task the team has ever finished piled in Done,
+ * growing by a column a day. The two gates are what keep it to work in flight:
+ * a task reaches the board when somebody marks it ready, and leaves it when a
+ * lead signs it off.
+ *
+ * Note what this does NOT hide: `completed_at` is untouched by either gate, and
+ * no report filters on `stage`, so work that has left the board is still counted
+ * in throughput, burndown and every summary. See TASK_STAGES.
+ */
 export async function getBoard(projectId: string) {
   const [project, statuses, tasks] = await Promise.all([
     prisma.project.findUnique({
@@ -250,7 +289,7 @@ export async function getBoard(projectId: string) {
       },
     }),
     prisma.task.findMany({
-      where: { projectId, deletedAt: null },
+      where: { projectId, stage: "ACTIVE", deletedAt: null },
       orderBy: { position: "asc" },
       select: taskSelect,
     }),
@@ -336,6 +375,7 @@ export async function createTask(
         description: input.description ?? null,
         type: input.type,
         priority: input.priority,
+        stage: input.stage,
         assigneeId: input.assigneeId ?? null,
         reporterId: ctx.userId,
         sprintId: input.sprintId ?? null,
@@ -761,6 +801,155 @@ export async function moveTaskToCategory(
   return getTask(ctx.taskId);
 }
 
+export const setTaskStageSchema = z.object({
+  stage: taskStageSchema,
+  /**
+   * Why, for the activity trail. Optional, but it is the useful half of
+   * BLOCKED: the point of that stage is that somebody comes back to it, and
+   * "blocked" on its own tells them nothing about what to do.
+   */
+  reason: z.string().max(500).optional(),
+});
+
+/**
+ * Move a task through the gates at either end of the board.
+ *
+ * Authorization is **here rather than in the route guard** because the level
+ * required depends on where the task is going: marking work ready is ordinary
+ * editing, and signing it off is a project-shaping act on the same footing as
+ * managing sprints or board columns. A guard sees the request before the body is
+ * parsed, so it cannot make that distinction — the same reason the comment and
+ * time-log routes authorize in their service. The route still guards at EDIT, so
+ * nothing here is reachable without it.
+ *
+ * What this deliberately does NOT touch: `status_id`, `position`, and above all
+ * `completed_at`. Signing a task off records that the project accepted the work;
+ * it does not change when the work was finished, and every report reads that
+ * timestamp. Rewriting it here would silently move throughput between weeks.
+ */
+export async function setTaskStage(
+  ctx: ProjectAuthCtx & { taskId: string },
+  input: z.infer<typeof setTaskStageSchema>,
+) {
+  const task = await prisma.task.findFirst({
+    where: { id: ctx.taskId, deletedAt: null },
+    select: {
+      id: true,
+      stage: true,
+      status: { select: { category: true } },
+    },
+  });
+  if (!task) throw notFound("Task not found");
+
+  const from = task.stage as TaskStage;
+  const transition = stageTransition(from, input.stage);
+  if (!transition.allowed) throw badRequest(transition.reason);
+
+  if (!atLeast(ctx.access, transition.requires)) {
+    throw forbidden(
+      `Only a project lead can move work ${describeStage(from)} to ${describeStage(input.stage)}.`,
+      ErrorCodes.AUTH_NO_PROJECT_ACCESS,
+    );
+  }
+
+  // Accepting work that never reached a Done column would make "Done" mean
+  // nothing, so the caller is told to move it there first rather than having
+  // the column quietly bypassed.
+  if (transition.requiresDoneColumn && task.status.category !== "DONE") {
+    throw badRequest(notInDoneMessage(transition.verb));
+  }
+
+  await prisma.task.update({
+    where: { id: ctx.taskId },
+    data: { stage: input.stage },
+  });
+
+  await recordActivity({
+    entityType: "TASK",
+    entityId: ctx.taskId,
+    projectId: ctx.projectId,
+    actorId: ctx.userId,
+    action: "task.stage_changed",
+    payload: {
+      from,
+      to: input.stage,
+      ...(input.reason ? { reason: input.reason } : {}),
+    },
+  });
+
+  return getTask(ctx.taskId);
+}
+
+export const signOffDoneSchema = z.object({
+  /** Limit to one Done column. Omitted means every Done column in the project. */
+  statusId: z.string().min(1).optional(),
+});
+
+/**
+ * Sign off everything sitting in the project's Done columns, in one act.
+ *
+ * The gate at the end of the board is per-task by design — accepting work is a
+ * judgement — but it arrives on a board that has been accumulating finished
+ * tasks since the project started, and clearing years of them one card at a time
+ * is not a thing anyone will do. This is the way through that backlog, and it
+ * stays useful afterwards for the team that reviews a week at a time.
+ *
+ * MANAGE, enforced by the route: it is the same act as signing one task off,
+ * performed on many.
+ *
+ * One activity row rather than one per task. A bulk sign-off of two thousand
+ * cards would otherwise write two thousand rows that say the same thing and
+ * bury every other event in the project's history — the same choice
+ * `updateProjectStatus` makes when a category change re-stamps a whole column.
+ */
+export async function signOffDone(
+  ctx: ProjectAuthCtx,
+  input: z.infer<typeof signOffDoneSchema>,
+) {
+  const doneStatuses = await prisma.taskStatus.findMany({
+    where: {
+      projectId: ctx.projectId,
+      category: "DONE",
+      ...(input.statusId ? { id: input.statusId } : {}),
+    },
+    select: { id: true },
+  });
+
+  if (doneStatuses.length === 0) {
+    throw badRequest("This project has no Done column to sign off.");
+  }
+
+  const where = {
+    projectId: ctx.projectId,
+    statusId: { in: doneStatuses.map((status) => status.id) },
+    // Only what is actually on the board. Re-running this must not disturb work
+    // already signed off, and must never resurrect a BACKLOG task.
+    stage: "ACTIVE",
+    deletedAt: null,
+  };
+
+  const result = await prisma.task.updateMany({
+    where,
+    data: { stage: "COMPLETED" },
+  });
+
+  // `completed_at` is deliberately untouched: it records when the work was
+  // finished, and every report reads it. Signing off says the project accepted
+  // the work, not that it happened today.
+  if (result.count > 0) {
+    await recordActivity({
+      entityType: "PROJECT",
+      entityId: ctx.projectId,
+      projectId: ctx.projectId,
+      actorId: ctx.userId,
+      action: "project.done_signed_off",
+      payload: { tasks: result.count, statusId: input.statusId ?? null },
+    });
+  }
+
+  return { signed_off: result.count };
+}
+
 /**
  * Board across every project the caller can see, grouped by status category.
  *
@@ -793,6 +982,9 @@ export async function getOverallBoard(
     filters.assigneeId ?? (filters.mineOnly ? ctx.userId : undefined);
 
   const where = {
+    // Live work only, exactly as the per-project board defines it — a card that
+    // has been signed off is off every board, not just the one it came from.
+    stage: "ACTIVE",
     deletedAt: null,
     project: { deletedAt: null },
     ...(filters.projectId
@@ -960,6 +1152,11 @@ async function assertWipAllows(
   const occupancy = await db.task.count({
     where: {
       statusId,
+      // Only work on the board occupies the board's capacity. Counting
+      // signed-off tasks here would let a Done column fill up permanently and
+      // then refuse every future move into it — a limit nobody could clear,
+      // because the tasks holding it are no longer visible to move out.
+      stage: "ACTIVE",
       deletedAt: null,
       ...(movingTaskId ? { id: { not: movingTaskId } } : {}),
     },

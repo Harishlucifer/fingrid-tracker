@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Inbox, Layers, Undo2 } from "lucide-react";
+import { ArrowRight, Inbox, Layers, PlayCircle, Undo2 } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
@@ -34,12 +34,18 @@ import {
   useAssignSprint,
   useBacklog,
   useProjectSprints,
+  useSetTaskStage,
   useSprintTasks,
 } from "./backlog.api";
 
 /**
- * Sprint planning: the backlog on one side, the selected sprint on the other,
- * with tasks moving between them.
+ * Planning: the backlog on one side, the selected sprint on the other.
+ *
+ * The backlog side is also the **gate onto the board**. Nothing filed here is
+ * visible on the board until somebody marks it ready, which is what stops To Do
+ * from being an inbox of everything anyone ever thought of. Scheduling into a
+ * sprint is a separate question and stays a separate button — a task can be
+ * ready without being committed, and committed without being ready.
  *
  * Deliberately buttons rather than drag-and-drop. Planning moves items between
  * two long lists that often need scrolling, where a click is more reliable and
@@ -55,6 +61,7 @@ export function BacklogView({
   const { data: backlog, isLoading } = useBacklog(projectId);
   const { data: sprints } = useProjectSprints(projectId);
   const assignSprint = useAssignSprint(projectId);
+  const setStage = useSetTaskStage(projectId);
 
   // Default to the active sprint — that is what a planner is usually filling.
   const defaultSprintId = useMemo(() => {
@@ -91,7 +98,7 @@ export function BacklogView({
             </Badge>
           </CardTitle>
           <CardDescription>
-            Unscheduled work · {formatMinutes(backlogEstimate)} estimated
+            Not on the board yet · {formatMinutes(backlogEstimate)} estimated
           </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
@@ -104,7 +111,7 @@ export function BacklogView({
             <EmptyState
               icon={Inbox}
               title="Backlog is empty"
-              hint="Every task in this project is already assigned to a sprint. New tasks land here until you schedule them."
+              hint="Everything filed in this project is already on the board. New tasks land here until somebody marks them ready."
             />
           ) : (
             <ul className="divide-y">
@@ -113,22 +120,48 @@ export function BacklogView({
                   key={task.id}
                   task={task}
                   action={
-                    canEdit && sprintId ? (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="shrink-0"
-                        disabled={assignSprint.isPending}
-                        onClick={() =>
-                          assignSprint.mutate({ taskId: task.id, sprintId })
-                        }
-                        title={`Move to ${selectedSprint?.name ?? "sprint"}`}
-                      >
-                        <ArrowRight className="size-4" />
-                        <span className="sr-only">
-                          Move {task.ref} to {selectedSprint?.name ?? "sprint"}
-                        </span>
-                      </Button>
+                    canEdit ? (
+                      <div className="flex shrink-0 items-center gap-1">
+                        {/* The gate. Scheduling into a sprint is the button
+                            beside it, and neither implies the other. */}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 shrink-0 px-2 text-xs"
+                          disabled={setStage.isPending}
+                          onClick={() =>
+                            setStage.mutate({
+                              taskId: task.id,
+                              stage: "ACTIVE",
+                            })
+                          }
+                          title="Put this task on the board"
+                        >
+                          <PlayCircle className="size-3.5" />
+                          Ready
+                          <span className="sr-only">
+                            Mark {task.ref} ready and put it on the board
+                          </span>
+                        </Button>
+                        {sprintId ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="shrink-0"
+                            disabled={assignSprint.isPending}
+                            onClick={() =>
+                              assignSprint.mutate({ taskId: task.id, sprintId })
+                            }
+                            title={`Move to ${selectedSprint?.name ?? "sprint"}`}
+                          >
+                            <ArrowRight className="size-4" />
+                            <span className="sr-only">
+                              Move {task.ref} to{" "}
+                              {selectedSprint?.name ?? "sprint"}
+                            </span>
+                          </Button>
+                        ) : null}
+                      </div>
                     ) : null
                   }
                 />

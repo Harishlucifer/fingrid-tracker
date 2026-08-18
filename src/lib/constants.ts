@@ -70,6 +70,37 @@ export const statusCategorySchema = z.enum(STATUS_CATEGORIES);
 export type StatusCategory = (typeof STATUS_CATEGORIES)[number];
 
 /**
+ * Whether a task is on the board at all — the gate at each end of it.
+ *
+ *  * `BACKLOG` — filed, not started, deliberately **not** on the board. A task
+ *    reaches the board only when someone marks it ready.
+ *  * `ACTIVE` — live work, somewhere in the columns.
+ *  * `COMPLETED` — finished and signed off. Off the board.
+ *  * `BLOCKED` — finished but rejected or parked. Off the board, and the one
+ *    stage anybody still has to do something about.
+ *
+ * This is a **third axis**, and the reason it exists is that the other two
+ * cannot answer the question:
+ *
+ *  * `task.status_id` says which column — where the work is in the workflow.
+ *  * `task.completed_at` says when it reached a `DONE` column, and is what the
+ *    burndown and throughput reports read.
+ *  * `stage` says only whether the board should show it.
+ *
+ * `COMPLETED` and `completed_at` are **not** the same thing and must never be
+ * conflated. Signing a task off is a board-visibility act; it does not touch
+ * `completed_at`, and no report may branch on `stage` — otherwise last quarter's
+ * throughput would change because somebody tidied the board this morning.
+ *
+ * The default is `ACTIVE`, deliberately: it is what every task did before this
+ * column existed, so nothing vanished from a board the day it was added.
+ */
+export const TASK_STAGES = ["BACKLOG", "ACTIVE", "COMPLETED", "BLOCKED"] as const;
+export const taskStageSchema = z.enum(TASK_STAGES);
+export type TaskStage = (typeof TASK_STAGES)[number];
+export const DEFAULT_TASK_STAGE: TaskStage = "ACTIVE";
+
+/**
  * What kind of work a task represents. `STORY` is planned work; `ISSUE` is
  * something wrong with what already exists. Purely descriptive — nothing in the
  * board, the reports or the notification rules branches on it — so a project can

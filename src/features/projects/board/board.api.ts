@@ -43,7 +43,12 @@ export function useCreateTask(projectId: string) {
       priority: string;
       assigneeId?: string | null;
       description?: string;
-    }) => api.post<TaskCard>(URL_TASKS, { projectId, ...input }),
+    }) =>
+      // `stage: "ACTIVE"` explicitly: the API files new tasks into the BACKLOG
+      // by default so nothing reaches the board unreviewed, but adding a card
+      // to a column IS the statement that the work is live, and it would be an
+      // odd button that put the card somewhere you cannot see it.
+      api.post<TaskCard>(URL_TASKS, { projectId, stage: "ACTIVE", ...input }),
     onSuccess: (task) => {
       toast.success(`${task.ref} created.`);
       void queryClient.invalidateQueries({ queryKey: boardKey(projectId) });
@@ -121,5 +126,34 @@ export function useMoveTask(projectId: string) {
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: boardKey(projectId) });
     },
+  });
+}
+
+/**
+ * Sign off every task sitting in the project's Done columns.
+ *
+ * Invalidates the board and the list, because the cards leave one and appear in
+ * the other — the whole point of the act.
+ */
+export function useSignOffDone(projectId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: { statusId?: string } = {}) =>
+      api.post<{ signed_off: number }>(
+        `${URL_PROJECTS}/${projectId}/sign-off`,
+        input,
+      ),
+    onSuccess: ({ signed_off: count }) => {
+      toast.success(
+        count === 0
+          ? "Nothing in Done to sign off."
+          : `${count} task${count === 1 ? "" : "s"} signed off.`,
+      );
+      void queryClient.invalidateQueries({ queryKey: boardKey(projectId) });
+      void queryClient.invalidateQueries({ queryKey: ["overall-board"] });
+      void queryClient.invalidateQueries({ queryKey: ["task-list"] });
+    },
+    onError: (error: Error) => toast.error(error.message),
   });
 }

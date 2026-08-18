@@ -19,7 +19,13 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Clock3, MessageSquare, Paperclip } from "lucide-react";
+import {
+  CheckCheck,
+  Clock3,
+  Loader2,
+  MessageSquare,
+  Paperclip,
+} from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
@@ -30,22 +36,25 @@ import {
   formatMinutes,
 } from "@/components/task-meta";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { UserAvatar } from "@/components/user-avatar";
 import type { WipPolicy } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { showsWipWarning } from "@/lib/wip-policy";
 
-import { useBoard, useMoveTask } from "./board.api";
+import { useBoard, useMoveTask, useSignOffDone } from "./board.api";
 import type { BoardColumn, TaskCard } from "./board.types";
 import { NewTaskButton } from "./new-task-dialog";
 
 export function BoardView({
   projectId,
   canEdit,
+  canManage,
 }: {
   projectId: string;
   canEdit: boolean;
+  canManage: boolean;
 }) {
   const { data, isLoading } = useBoard(projectId);
   const moveTask = useMoveTask(projectId);
@@ -154,6 +163,8 @@ export function BoardView({
       onDragEnd={handleDragEnd}
       onDragCancel={() => setDraggingId(null)}
     >
+      <SignOffBar projectId={projectId} columns={columns} canManage={canManage} />
+
       {/* Columns scroll horizontally inside this container; the page body never does. */}
       <div className="board-scroll flex gap-4 pb-4">
         {columns.map((column) => (
@@ -171,6 +182,58 @@ export function BoardView({
         {dragging ? <Card task={dragging} isDragging /> : null}
       </DragOverlay>
     </DndContext>
+  );
+}
+
+/**
+ * The exit gate, offered where the queue it drains is visible.
+ *
+ * Done is a review queue now, not an archive: work waits here until a lead
+ * accepts it, and then leaves the board. This is the bulk form of that, and it
+ * exists because the gate landed on boards that had been accumulating finished
+ * work since the project started — nobody clears years of it one card at a time.
+ *
+ * Hidden when Done is empty, so a board that is being kept up reads as clean
+ * rather than as having a chore attached to it.
+ */
+function SignOffBar({
+  projectId,
+  columns,
+  canManage,
+}: {
+  projectId: string;
+  columns: BoardColumn[];
+  canManage: boolean;
+}) {
+  const signOff = useSignOffDone(projectId);
+
+  const waiting = columns
+    .filter((column) => column.category === "DONE")
+    .reduce((sum, column) => sum + column.tasks.length, 0);
+
+  if (!canManage || waiting === 0) return null;
+
+  return (
+    <div className="bg-secondary/45 mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg px-3 py-2">
+      <p className="text-muted-foreground text-xs">
+        <span className="text-foreground font-medium">{waiting}</span> task
+        {waiting === 1 ? "" : "s"} in Done waiting to be signed off.
+      </p>
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-7 text-xs"
+        disabled={signOff.isPending}
+        onClick={() => signOff.mutate({})}
+      >
+        {signOff.isPending ? (
+          <Loader2 className="size-3.5 animate-spin" />
+        ) : (
+          <CheckCheck className="size-3.5" />
+        )}
+        Sign off all
+      </Button>
+    </div>
   );
 }
 

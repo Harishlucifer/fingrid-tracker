@@ -13,7 +13,12 @@ export default async function BoardPage({
   const ctx = await requireProjectAccess(projectId, "VIEW");
 
   // Dragging and task creation are EDIT-level; a VIEWER gets a read-only board.
+  // Signing work off is MANAGE, alongside sprints and column management.
   return (
-    <BoardView projectId={projectId} canEdit={atLeast(ctx.access, "EDIT")} />
+    <BoardView
+      projectId={projectId}
+      canEdit={atLeast(ctx.access, "EDIT")}
+      canManage={atLeast(ctx.access, "MANAGE")}
+    />
   );
 }

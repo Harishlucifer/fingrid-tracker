@@ -1,0 +1,56 @@
+-- Task stage: the gate at each end of the board.
+--
+-- The board query was `WHERE project_id = ? AND deleted_at IS NULL` — every live
+-- task in the project, with no filter and no limit. Two columns grew without
+-- bound as a result. "Done" accumulated every task the team had ever finished,
+-- forever. "To Do" was worse in a quieter way: a backlog item is not a distinct
+-- status here (backlog only ever meant `sprint_id IS NULL`) and `status_id` is
+-- NOT NULL, so everything anybody filed was rendered on the board immediately,
+-- indistinguishable from work that had actually been started.
+--
+-- This column is the fix, and it is deliberately not a cap on the display. It
+-- gives the board an entry gate and an exit gate, so the board means live work:
+-- BACKLOG is off the board until someone marks it ready, and COMPLETED/BLOCKED
+-- are off the board once a lead has signed the work off. "Done" then stops being
+-- an archive and becomes a review queue, which stays short because of a workflow
+-- step rather than because we stopped drawing the rest.
+--
+-- It is a THIRD axis, and the reason it earns a column of its own is that
+-- neither existing one can answer the question:
+--
+--   * `status_id`    — which column: where the work is in the workflow.
+--   * `completed_at` — when it reached a DONE-category column. Every report
+--                      reads this and only this.
+--   * `stage`        — whether the board should show it.
+--
+-- So `stage = 'COMPLETED'` is NOT `completed_at`. Signing a task off must leave
+-- `completed_at` alone and no report may filter on `stage`, or last quarter's
+-- throughput would change because somebody tidied the board this morning. That
+-- separation is the whole reason this is a new column instead of a new status
+-- category or a reuse of `deleted_at`.
+--
+-- VarChar(32) with an app-side zod union rather than a MySQL ENUM, matching
+-- `status`, `priority` and `wip_policy` — see the "No MySQL ENUM" rule in
+-- AGENTS.md. The allowed values live in TASK_STAGES in `src/lib/constants.ts`
+-- and are validated on write.
+--
+-- Existing rows default to ACTIVE, which is exactly what every task did before
+-- this column existed: nothing disappears from a board the day this lands, and
+-- no team arrives to find work they could see yesterday missing. The gates apply
+-- to what happens next. Clearing the historical Done pile is a separate,
+-- deliberate act with an activity trail behind it, not a side effect of a
+-- migration.
+--
+-- The index serves all three readers of this column — the board (ACTIVE), the
+-- backlog screen (BACKLOG) and the archive list (COMPLETED/BLOCKED) — because
+-- each is the same shape of question: one project, one stage, live rows only.
+-- `deleted_at` is last and `IS NULL` is a ref predicate MySQL can use as part of
+-- the lookup rather than a filter applied afterwards.
+--
+-- Forward-compatible with the running application, so it is safe to apply BEFORE
+-- deploying the code that reads it: the old code never selects this column. The
+-- reverse is not true, so apply this, then deploy.
+
+ALTER TABLE `task`
+  ADD COLUMN `stage` VARCHAR(32) NOT NULL DEFAULT 'ACTIVE' AFTER `priority`,
+  ADD INDEX `ix_task_stage` (`project_id`, `stage`, `deleted_at`);

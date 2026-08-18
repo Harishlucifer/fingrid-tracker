@@ -18,6 +18,9 @@
  * `completedAt` is deliberately absent: it is stamped by the status change that
  * caused it, so reporting it as well would show every move into Done twice.
  */
+import type { TaskStage } from "./constants";
+import { describeStage } from "./task-stage";
+
 export const TASK_ACTIVITY_FIELDS = {
   statusId: "status",
   sprintId: "sprint",
@@ -64,6 +67,26 @@ export function describeTaskChanges(
     return [];
   }
   const record = payload as Record<string, unknown>;
+
+  // A stage change records where the task went, not a column diff, and stores
+  // the raw stage names because that is what the write actually changed. They
+  // are turned into words here for the same reason status ids are: "ACTIVE" is
+  // a database value, not something a reader should have to translate.
+  if (action === "task.stage_changed") {
+    const changes: TaskActivityChange[] = [
+      {
+        field: "stage",
+        from: stageText(record.from),
+        to: stageText(record.to),
+      },
+    ];
+
+    // The useful half of a BLOCKED decision — somebody has to act on it later.
+    const reason = textOrNull(record.reason);
+    if (reason) changes.push({ field: "reason", from: null, to: reason });
+
+    return changes;
+  }
 
   if (action === "task.assigned" || action === "task.unassigned") {
     return [
@@ -120,6 +143,10 @@ export function formatActivityValue(
   }
 
   return String(value);
+}
+
+function stageText(value: unknown): string | null {
+  return typeof value === "string" ? describeStage(value as TaskStage) : null;
 }
 
 function textOrNull(value: unknown): string | null {

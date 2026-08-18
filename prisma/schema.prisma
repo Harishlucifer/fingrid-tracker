@@ -265,6 +265,19 @@ model Task {
   // LOW | MEDIUM | HIGH | URGENT
   priority    String  @default("MEDIUM") @db.VarChar(32)
 
+  // BACKLOG | ACTIVE | COMPLETED | BLOCKED — see TASK_STAGES.
+  //
+  // Whether the board shows this task at all, and nothing else. It is a third
+  // axis, distinct from the two that already exist and easy to confuse with
+  // both: `status_id` says WHICH COLUMN, `completed_at` says WHEN IT REACHED A
+  // DONE COLUMN (and is what every report reads), and this says WHETHER IT IS
+  // ON THE BOARD.
+  //
+  // `COMPLETED` is therefore not `completed_at`. Signing a task off leaves
+  // `completed_at` untouched and no report may filter on `stage`, or last
+  // quarter's throughput would change because somebody tidied the board today.
+  stage       String  @default("ACTIVE") @db.VarChar(32)
+
   assigneeId String? @map("assignee_id") @db.Char(36)
   reporterId String  @map("reporter_id") @db.Char(36)
 
@@ -295,6 +308,9 @@ model Task {
 
   @@unique([projectId, number], map: "uq_task_project_number")
   @@index([projectId, statusId, position], map: "ix_task_board")
+  // The board's own filter, and the backlog's and the archive's: every one of
+  // them asks a project for one stage of live rows.
+  @@index([projectId, stage, deletedAt], map: "ix_task_stage")
   @@index([assigneeId, completedAt], map: "ix_task_assignee")
   @@index([sprintId], map: "ix_task_sprint")
   @@index([projectId, deletedAt], map: "ix_task_project_live")

@@ -1,4 +1,4 @@
-import type { StatusCategory, WipPolicy } from "@/lib/constants";
+import type { StatusCategory, TaskStage, WipPolicy } from "@/lib/constants";
 
 import type { UserRef } from "../list/list.types";
 
@@ -10,6 +10,12 @@ export type TaskCard = {
   description: string | null;
   type: string;
   priority: string;
+  /**
+   * Whether the board shows this task at all — see TASK_STAGES. Distinct from
+   * `status` (which column) and `completed_at` (when it reached Done, which is
+   * what the reports read).
+   */
+  stage: TaskStage;
   position: number;
   due_date: string | null;
   estimate_minutes: number | null;
