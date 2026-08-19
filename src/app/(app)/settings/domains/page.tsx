@@ -1,5 +1,5 @@
 import { DomainsView } from "@/features/settings/domains/domains.view";
-import { requireAdmin } from "@/server/auth/guards";
+import { requireAdminPage } from "@/server/auth/page-guards";
 
 export const metadata = { title: "Allowed domains · Inforvio PM" };
 
@@ -9,6 +9,6 @@ export const metadata = { title: "Allowed domains · Inforvio PM" };
  * access control.
  */
 export default async function DomainsPage() {
-  await requireAdmin();
+  await requireAdminPage();
   return <DomainsView />;
 }

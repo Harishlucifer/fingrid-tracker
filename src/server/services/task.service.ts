@@ -7,7 +7,7 @@ import { z } from "zod";
 import {
   needsRebalance,
   nextPosition,
-  positionBetween,
+  positionForDrop,
   rebalancedPositions,
 } from "@/lib/board-position";
 import {
@@ -626,7 +626,7 @@ export async function moveTask(
   });
   if (!status) throw badRequest("Unknown status for this project.");
 
-  const [beforeTask, afterTask] = await Promise.all([
+  const [beforeTask, afterTask, lastTask] = await Promise.all([
     input.beforeTaskId
       ? prisma.task.findFirst({
           where: {
@@ -647,11 +647,30 @@ export async function moveTask(
           select: { position: true },
         })
       : null,
+    // Where the column actually ends. Fetched unconditionally, inside a batch
+    // that was already going out, because it is the only thing that makes an
+    // append correct — and a drop can arrive with no neighbours whenever the
+    // card was dropped on the column background, or the neighbour the client
+    // named has since moved. The moving task is not its own neighbour.
+    prisma.task.findFirst({
+      where: {
+        projectId: ctx.projectId,
+        statusId: status.id,
+        stage: "ACTIVE",
+        deletedAt: null,
+        id: { not: ctx.taskId },
+      },
+      orderBy: { position: "desc" },
+      select: { position: true },
+    }),
   ]);
 
   const before = beforeTask?.position ?? null;
   const after = afterTask?.position ?? null;
-  const candidate = positionBetween(before, after);
+  // NOT positionBetween: with both neighbours null that seeds an empty column
+  // at BOARD_POSITION_GAP, which on a populated column lands near the top and
+  // can collide exactly with whatever is already there. See positionForDrop.
+  const candidate = positionForDrop(before, after, lastTask?.position ?? null);
   const completedAt = resolveCompletedAt(status.category, task.completedAt);
 
   await prisma.$transaction(async (tx) => {

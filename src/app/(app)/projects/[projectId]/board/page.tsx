@@ -1,6 +1,6 @@
 import { BoardView } from "@/features/projects/board/board.view";
 import { atLeast } from "@/lib/permissions";
-import { requireProjectAccess } from "@/server/auth/guards";
+import { requireProjectPage } from "@/server/auth/page-guards";
 
 export const metadata = { title: "Board · Inforvio PM" };
 
@@ -10,7 +10,7 @@ export default async function BoardPage({
   params: Promise<{ projectId: string }>;
 }) {
   const { projectId } = await params;
-  const ctx = await requireProjectAccess(projectId, "VIEW");
+  const ctx = await requireProjectPage(projectId, "VIEW");
 
   // Dragging and task creation are EDIT-level; a VIEWER gets a read-only board.
   // Signing work off is MANAGE, alongside sprints and column management.

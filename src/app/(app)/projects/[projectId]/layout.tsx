@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { requireProjectAccess } from "@/server/auth/guards";
+import { requireProjectPage } from "@/server/auth/page-guards";
 import { getProject } from "@/server/services/project.service";
 
 import { ProjectTabs } from "./project-tabs";
@@ -18,7 +18,7 @@ export default async function ProjectLayout({
   params: Promise<{ projectId: string }>;
 }) {
   const { projectId } = await params;
-  const ctx = await requireProjectAccess(projectId, "VIEW");
+  const ctx = await requireProjectPage(projectId, "VIEW");
   const project = await getProject(projectId);
 
   return (

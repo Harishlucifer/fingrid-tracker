@@ -38,6 +38,40 @@ export function positionBetween(
 }
 
 /**
+ * Position for a drop, given the neighbours the SERVER resolved and where the
+ * column actually ends.
+ *
+ * `positionBetween(null, null)` answers one question — "seed an EMPTY column" —
+ * and that is the only thing two nulls can mean on their own. But a drop reaches
+ * the server with no neighbours in cases that are not that:
+ *
+ *   * the card was dropped on the column's background rather than between two
+ *     cards;
+ *   * the client named a neighbour that has since moved or been deleted, so the
+ *     server's scoped lookup came back empty.
+ *
+ * In both, seeding at BOARD_POSITION_GAP puts the card near the TOP of a column
+ * that is not empty, and can collide *exactly* with whatever already sits at
+ * 1024 — two rows with one position, whose relative order is then undefined.
+ * `needsRebalance` cannot catch it either: with both neighbours null there is
+ * nothing for it to compare against, so it reports no collision and the write
+ * goes through.
+ *
+ * The end of the column is a fact only the database has, so the caller passes it
+ * in and this appends past it. That also makes the two write paths agree —
+ * `moveTaskToCategory` already appends with `nextPosition`, and a board drop
+ * that resolved no neighbours means the same thing.
+ */
+export function positionForDrop(
+  before: number | null,
+  after: number | null,
+  lastPosition: number | null,
+): number {
+  if (before === null && after === null) return nextPosition(lastPosition);
+  return positionBetween(before, after);
+}
+
+/**
  * True when a computed position collides with a neighbour, meaning the gap has
  * closed and the column must be rebalanced before the insert is durable.
  */

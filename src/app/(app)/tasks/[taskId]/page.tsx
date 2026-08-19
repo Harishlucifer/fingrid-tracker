@@ -1,6 +1,6 @@
 import { TaskDetailView } from "@/features/tasks/detail/detail.view";
 import { atLeast } from "@/lib/permissions";
-import { requireTaskAccess } from "@/server/auth/guards";
+import { requireTaskPage } from "@/server/auth/page-guards";
 
 export const metadata = { title: "Task · Inforvio PM" };
 
@@ -12,7 +12,7 @@ export default async function TaskPage({
   const { taskId } = await params;
   // Resolves the task's project and checks access to it; a task in a project the
   // caller cannot see 404s rather than 403s.
-  const ctx = await requireTaskAccess(taskId, "VIEW");
+  const ctx = await requireTaskPage(taskId, "VIEW");
 
   return (
     <TaskDetailView

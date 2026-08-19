@@ -12,6 +12,7 @@ import {
   ALLOWED_UPLOAD_MIME_TYPES,
   previewKindOf,
 } from "@/lib/constants";
+import { sanitizeFileName } from "@/lib/file-name";
 import { env } from "@/lib/env";
 import type { AuthCtx, ProjectAuthCtx } from "@/server/auth/guards";
 import { prisma } from "@/server/db/prisma";
@@ -272,16 +273,4 @@ export async function deleteAttachment(ctx: AuthCtx, attachmentId: string) {
   });
 
   return { id: attachmentId, deleted: true };
-}
-
-/**
- * Keep a display name that is safe to echo in a header: strip directory parts,
- * control characters and quotes.
- */
-function sanitizeFileName(raw: string): string {
-  const base = (raw || "file").split(/[\\/]/).pop() ?? "file";
-  const cleaned = base
-    .replace(/[ -"]/g, "")
-    .trim();
-  return (cleaned || "file").slice(0, 255);
 }

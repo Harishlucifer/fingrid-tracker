@@ -5,6 +5,7 @@ import {
   needsRebalance,
   nextPosition,
   positionBetween,
+  positionForDrop,
   rebalancedPositions,
 } from "@/lib/board-position";
 
@@ -83,5 +84,42 @@ describe("nextPosition", () => {
   it("seeds and appends", () => {
     expect(nextPosition(null)).toBe(BOARD_POSITION_GAP);
     expect(nextPosition(5120)).toBe(5120 + BOARD_POSITION_GAP);
+  });
+});
+
+describe("positionForDrop", () => {
+  it("seeds an empty column, exactly as positionBetween does", () => {
+    expect(positionForDrop(null, null, null)).toBe(BOARD_POSITION_GAP);
+  });
+
+  // The trap. positionBetween(null, null) is 1024 whatever the column holds,
+  // and needsRebalance cannot see the collision because both neighbours are
+  // null — so the write went through and two rows shared one position.
+  it("appends past the end when neither neighbour resolved", () => {
+    expect(positionForDrop(null, null, 5120)).toBe(5120 + BOARD_POSITION_GAP);
+  });
+
+  it("never lands on the seed position in a populated column", () => {
+    expect(positionForDrop(null, null, BOARD_POSITION_GAP)).not.toBe(
+      BOARD_POSITION_GAP,
+    );
+  });
+
+  it("is strictly greater than the last position, for any column", () => {
+    for (const last of [1, 2, 1024, 4096, 100_000]) {
+      expect(positionForDrop(null, null, last)).toBeGreaterThan(last);
+    }
+  });
+
+  it("defers to positionBetween whenever a neighbour is known", () => {
+    expect(positionForDrop(1024, 2048, 99_999)).toBe(positionBetween(1024, 2048));
+    expect(positionForDrop(null, 1024, 99_999)).toBe(positionBetween(null, 1024));
+    expect(positionForDrop(1024, null, 99_999)).toBe(positionBetween(1024, null));
+  });
+
+  it("ignores the column end when a neighbour is known", () => {
+    // The end is only consulted for the append case; a real drop between two
+    // cards must not be dragged to the bottom by it.
+    expect(positionForDrop(1024, 2048, 1)).toBe(1536);
   });
 });
