@@ -150,7 +150,9 @@ export function OverallBoardView({
     moveCategory.mutate({ taskId, category: targetCategory });
   }
 
-  const totalShown = columns.reduce((sum, column) => sum + column.total, 0);
+  // What is on screen. The board's own total is `data.total`, and the two
+  // differ exactly when the card limit clipped the result.
+  const totalShown = columns.reduce((sum, column) => sum + column.tasks.length, 0);
   const dragging = draggingId ? taskById.get(draggingId) : null;
 
   return (
@@ -197,14 +199,16 @@ export function OverallBoardView({
         </Select>
 
         <span className="text-muted-foreground tnum ml-auto text-xs">
-          {totalShown} card(s)
+          {data && data.total > totalShown
+            ? `${totalShown} of ${data.total} card(s)`
+            : `${totalShown} card(s)`}
         </span>
       </div>
 
       {data?.truncated && (
         <p className="border-warning/30 bg-warning-bg text-warning rounded-lg border px-3 py-2 text-xs">
-          Showing the first 400 tasks only. Filter by project or assignee to
-          narrow this down.
+          Showing the first {totalShown} of {data.total} tasks. Filter by
+          project or assignee to narrow this down.
         </p>
       )}
 

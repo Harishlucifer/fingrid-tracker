@@ -1,6 +1,11 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { api, buildQuery } from "@/lib/api-client";
@@ -22,7 +27,8 @@ export type SprintSummary = {
   completed_task_count: number;
 };
 
-export const backlogKey = (projectId: string) => ["backlog", projectId] as const;
+export const backlogKey = (projectId: string, page = 1) =>
+  ["backlog", projectId, page] as const;
 
 /**
  * Work that has not been let onto the board yet.
@@ -32,17 +38,20 @@ export const backlogKey = (projectId: string) => ["backlog", projectId] as const
  * filed appeared in To Do immediately whether or not it had been looked at. The
  * backlog is now a stage of its own, and this screen is the gate out of it.
  */
-export function useBacklog(projectId: string) {
+export function useBacklog(projectId: string, page = 1) {
   return useQuery({
-    queryKey: backlogKey(projectId),
+    queryKey: backlogKey(projectId, page),
     queryFn: () =>
       api.getPaged<TaskCard[]>(
         `${URL_TASKS}${buildQuery({
           projectId,
           stage: "BACKLOG",
-          per_page: 100,
+          page,
+          per_page: 50,
         })}`,
       ),
+    // Paging otherwise blanks the list: each page is its own cache key.
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -77,7 +86,9 @@ export function useSetTaskStage(projectId: string) {
               ? `${task.ref} completed.`
               : `${task.ref} blocked.`,
       );
-      void queryClient.invalidateQueries({ queryKey: backlogKey(projectId) });
+      // Keyed on the prefix, not backlogKey(projectId, page): a task leaving the
+      // backlog changes every page of it, not just the one on screen.
+      void queryClient.invalidateQueries({ queryKey: ["backlog", projectId] });
       void queryClient.invalidateQueries({ queryKey: ["sprint-tasks"] });
       void queryClient.invalidateQueries({ queryKey: ["board", projectId] });
       void queryClient.invalidateQueries({ queryKey: ["overall-board"] });
@@ -139,7 +150,9 @@ export function useAssignSprint(projectId: string) {
           ? `${task.ref} moved into ${task.sprint?.name ?? "the sprint"}.`
           : `${task.ref} returned to the backlog.`,
       );
-      void queryClient.invalidateQueries({ queryKey: backlogKey(projectId) });
+      // Keyed on the prefix, not backlogKey(projectId, page): a task leaving the
+      // backlog changes every page of it, not just the one on screen.
+      void queryClient.invalidateQueries({ queryKey: ["backlog", projectId] });
       void queryClient.invalidateQueries({ queryKey: ["sprint-tasks"] });
       void queryClient.invalidateQueries({ queryKey: ["sprints", projectId] });
       void queryClient.invalidateQueries({ queryKey: ["board", projectId] });

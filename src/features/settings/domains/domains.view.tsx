@@ -2,9 +2,11 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Globe, Info, Loader2, Plus } from "lucide-react";
+import { useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 
+import { Pager } from "@/components/pager";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -61,7 +63,8 @@ const formSchema = z.object({
 type FormValues = z.infer<typeof formSchema>;
 
 export function DomainsView() {
-  const { data, isLoading } = useAllowedDomains();
+  const [page, setPage] = useState(1);
+  const { data, isLoading, isFetching } = useAllowedDomains(page);
   const createDomain = useCreateAllowedDomain();
   const updateDomain = useUpdateAllowedDomain();
 
@@ -249,6 +252,15 @@ export function DomainsView() {
                   ))}
                 </TableBody>
               </Table>
+              {data && (
+                <div className="mt-4">
+                  <Pager
+                    meta={data.meta}
+                    disabled={isFetching}
+                    onPageChange={setPage}
+                  />
+                </div>
+              )}
             </div>
           )}
         </CardContent>

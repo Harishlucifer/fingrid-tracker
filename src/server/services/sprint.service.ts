@@ -10,7 +10,7 @@ import { prisma } from "@/server/db/prisma";
 import { badRequest, conflict, forbidden, notFound } from "@/server/http/errors";
 import { buildMeta, type Pagination } from "@/server/http/pagination";
 
-import { diffPayload, recordActivity } from "./activity.service";
+import { type Db, diffPayload, recordActivity } from "./activity.service";
 
 export const createSprintSchema = z
   .object({
@@ -87,21 +87,24 @@ export async function createSprint(
   }
 
   // Only one sprint may be ACTIVE at a time, or "the current sprint" is
-  // ambiguous and the burndown has no single subject.
-  if (input.status === "ACTIVE") {
-    await assertNoOtherActiveSprint(ctx.projectId, null);
-  }
+  // ambiguous and the burndown has no single subject. Checked inside the same
+  // transaction as the insert — see assertNoOtherActiveSprint.
+  const sprint = await prisma.$transaction(async (tx) => {
+    if (input.status === "ACTIVE") {
+      await assertNoOtherActiveSprint(tx, ctx.projectId, null);
+    }
 
-  const sprint = await prisma.sprint.create({
-    data: {
-      projectId: ctx.projectId,
-      name: input.name,
-      goal: input.goal ?? null,
-      startDate: input.startDate,
-      endDate: input.endDate,
-      status: input.status,
-    },
-    select: { id: true, name: true },
+    return tx.sprint.create({
+      data: {
+        projectId: ctx.projectId,
+        name: input.name,
+        goal: input.goal ?? null,
+        startDate: input.startDate,
+        endDate: input.endDate,
+        status: input.status,
+      },
+      select: { id: true, name: true },
+    });
   });
 
   await recordActivity({
@@ -139,19 +142,21 @@ export async function updateSprint(
     throw badRequest("End date cannot be before the start date.");
   }
 
-  if (input.status === "ACTIVE" && before.status !== "ACTIVE") {
-    await assertNoOtherActiveSprint(ctx.projectId, sprintId);
-  }
+  await prisma.$transaction(async (tx) => {
+    if (input.status === "ACTIVE" && before.status !== "ACTIVE") {
+      await assertNoOtherActiveSprint(tx, ctx.projectId, sprintId);
+    }
 
-  await prisma.sprint.update({
-    where: { id: sprintId },
-    data: {
-      ...(input.name === undefined ? {} : { name: input.name }),
-      ...(input.goal === undefined ? {} : { goal: input.goal }),
-      ...(input.startDate === undefined ? {} : { startDate: input.startDate }),
-      ...(input.endDate === undefined ? {} : { endDate: input.endDate }),
-      ...(input.status === undefined ? {} : { status: input.status }),
-    },
+    await tx.sprint.update({
+      where: { id: sprintId },
+      data: {
+        ...(input.name === undefined ? {} : { name: input.name }),
+        ...(input.goal === undefined ? {} : { goal: input.goal }),
+        ...(input.startDate === undefined ? {} : { startDate: input.startDate }),
+        ...(input.endDate === undefined ? {} : { endDate: input.endDate }),
+        ...(input.status === undefined ? {} : { status: input.status }),
+      },
+    });
   });
 
   await recordActivity({
@@ -200,11 +205,25 @@ export async function deleteSprint(ctx: ProjectAuthCtx, sprintId: string) {
   return { id: sprintId, deleted: true };
 }
 
+/**
+ * Refuse a second ACTIVE sprint in one project.
+ *
+ * Takes a client so callers can run it inside the transaction that does the
+ * write. That narrows the gap between checking and writing to the length of one
+ * transaction instead of two round trips — it does not close it, because MySQL
+ * cannot express "at most one ACTIVE row per project" as a constraint: a unique
+ * index would have to be partial, and a nullable-column trick cannot represent
+ * a status that changes back and forth. Two starts racing inside the same
+ * instant can therefore still both win, exactly as `assertWipAllows` documents
+ * for column limits; the second is refused on the next attempt and the sprints
+ * screen shows both, which is visible rather than silent.
+ */
 async function assertNoOtherActiveSprint(
+  db: Db,
   projectId: string,
   exceptSprintId: string | null,
 ) {
-  const active = await prisma.sprint.findFirst({
+  const active = await db.sprint.findFirst({
     where: {
       projectId,
       status: "ACTIVE",

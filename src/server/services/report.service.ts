@@ -58,12 +58,22 @@ export async function getThroughput(projectId: string, weeks = 12) {
     }));
 }
 
-/** Open task and estimate load per assignee. */
+/**
+ * Open task and estimate load per assignee.
+ *
+ * `stage: "ACTIVE"` here, and this is the one report that reads `stage` at all.
+ * That is not a contradiction of the rule that reports must ignore it — the rule
+ * protects the HISTORICAL series (throughput, burndown) from being rewritten by
+ * somebody tidying the board today. Workload is the opposite kind of number: a
+ * snapshot of what people are carrying *now*. A backlog item is work nobody has
+ * agreed to start, so counting it against its assignee describes a load that
+ * does not exist, and the person cannot clear it by doing anything.
+ */
 export async function getWorkload(projectId: string) {
   const [grouped, members] = await Promise.all([
     prisma.task.groupBy({
       by: ["assigneeId"],
-      where: { projectId, deletedAt: null, completedAt: null },
+      where: { projectId, deletedAt: null, stage: "ACTIVE", completedAt: null },
       _count: { _all: true },
       _sum: { estimateMin: true },
     }),
@@ -194,24 +204,38 @@ export async function getProjectSummary(projectId: string) {
     }),
   ]);
 
-  const [openCount, overdueCount, columns] = await Promise.all([
-    prisma.task.count({
-      where: { projectId, deletedAt: null, completedAt: null },
-    }),
-    prisma.task.count({
-      where: {
-        projectId,
-        deletedAt: null,
-        completedAt: null,
-        dueDate: { lt: new Date() },
-      },
-    }),
-    prisma.taskStatus.findMany({
-      where: { projectId },
-      orderBy: { position: "asc" },
-      select: { id: true, name: true, category: true, color: true },
-    }),
-  ]);
+  const [openCount, completedCount, backlogCount, overdueCount, columns] =
+    await Promise.all([
+      prisma.task.count({
+        where: { projectId, deletedAt: null, completedAt: null },
+      }),
+      // Counted, not derived. This used to be `total - openCount`, which is only
+      // correct while "not open" and "completed" mean the same thing — and they
+      // stopped being the same the moment a task could sit in the backlog. The
+      // subtraction would have quietly reported every unstarted task as finished.
+      prisma.task.count({
+        where: { projectId, deletedAt: null, completedAt: { not: null } },
+      }),
+      // Reported separately rather than folded into `open_tasks`: work waiting to
+      // be picked up is a different thing from work in flight, and a summary that
+      // adds them together hides which of the two a project actually has.
+      prisma.task.count({
+        where: { projectId, deletedAt: null, stage: "BACKLOG" },
+      }),
+      prisma.task.count({
+        where: {
+          projectId,
+          deletedAt: null,
+          completedAt: null,
+          dueDate: { lt: new Date() },
+        },
+      }),
+      prisma.taskStatus.findMany({
+        where: { projectId },
+        orderBy: { position: "asc" },
+        select: { id: true, name: true, category: true, color: true },
+      }),
+    ]);
 
   const countByStatus = new Map(
     statuses.map((row) => [row.statusId, row._count._all]),
@@ -220,7 +244,8 @@ export async function getProjectSummary(projectId: string) {
   return {
     total_tasks: totals._count._all,
     open_tasks: openCount,
-    completed_tasks: totals._count._all - openCount,
+    backlog_tasks: backlogCount,
+    completed_tasks: completedCount,
     overdue_tasks: overdueCount,
     logged_minutes: timeSum._sum.minutes ?? 0,
     by_status: columns.map((column) => ({

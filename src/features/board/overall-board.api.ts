@@ -13,8 +13,10 @@ const URL_TASKS = "/api/v1/tasks";
 const URL_USERS = "/api/v1/users";
 
 export type OverallBoard = {
-  columns: { category: string; tasks: TaskCard[]; total: number }[];
+  columns: { category: string; tasks: TaskCard[] }[];
   projects: { id: string; key: string; name: string }[];
+  /** Live tasks matching the filters, sent or not. */
+  total: number;
   truncated: boolean;
 };
 
@@ -89,7 +91,6 @@ export function useMoveTaskCategory(filters: BoardFilters) {
         const index = column.tasks.findIndex((task) => task.id === taskId);
         if (index !== -1) {
           moved = column.tasks.splice(index, 1)[0];
-          column.total = column.tasks.length;
           break;
         }
       }
@@ -98,7 +99,6 @@ export function useMoveTaskCategory(filters: BoardFilters) {
       const target = next.columns.find((column) => column.category === category);
       if (target) {
         target.tasks.unshift(moved);
-        target.total = target.tasks.length;
       }
 
       queryClient.setQueryData(key, next);

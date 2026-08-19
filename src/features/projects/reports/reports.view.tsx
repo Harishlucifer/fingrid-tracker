@@ -38,6 +38,7 @@ type Reports = {
   summary: {
     total_tasks: number;
     open_tasks: number;
+    backlog_tasks: number;
     completed_tasks: number;
     overdue_tasks: number;
     logged_minutes: number;
@@ -135,8 +136,11 @@ export function ReportsView({ projectId }: { projectId: string }) {
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <StatCard label="Open tasks" value={summary.open_tasks} />
+        {/* Its own tile rather than a slice of "open": work waiting to be
+            picked up is a different question from work in flight. */}
+        <StatCard label="In backlog" value={summary.backlog_tasks} />
         <StatCard label="Completed" value={summary.completed_tasks} />
         <StatCard label="Overdue" value={summary.overdue_tasks} tone="danger" />
         <StatCard

@@ -1133,6 +1133,19 @@ function CommentsTab({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const comments = data?.data ?? [];
+  /**
+   * The request asks for 100, oldest first. Beyond that the rest are simply not
+   * sent, and nothing said so — on a long thread the newest comments, the ones
+   * anybody is actually looking for, were the ones missing.
+   *
+   * Not paged, deliberately. Threads are assembled by filtering this flat array
+   * into roots and replies, so a page boundary would put a reply on a different
+   * page from its parent and orphan it. Paging a conversation from the oldest
+   * end is also the wrong shape: it wants "load older" from the newest end,
+   * which needs the server to order the other way. Saying so is the half of
+   * that fix which stops the loss being silent.
+   */
+  const hiddenComments = Math.max((data?.meta.total ?? 0) - comments.length, 0);
   const roots = comments.filter((comment) => !comment.parent_id);
   const repliesOf = (parentId: string) =>
     comments.filter((comment) => comment.parent_id === parentId);
@@ -1170,6 +1183,14 @@ function CommentsTab({
         </div>
       ) : (
         <ul className="space-y-5">
+          {hiddenComments > 0 && (
+            <li className="text-muted-foreground rounded-lg border border-dashed px-3 py-2 text-center text-xs">
+              Showing the first {comments.length} of{" "}
+              {data?.meta.total ?? comments.length} comments — the{" "}
+              {hiddenComments} most recent{" "}
+              {hiddenComments === 1 ? "is" : "are"} not shown.
+            </li>
+          )}
           {roots.map((comment) => (
             <li key={comment.id} className="space-y-3">
               <CommentRow

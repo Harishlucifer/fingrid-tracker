@@ -212,11 +212,22 @@ or a prisma-free module.
   task reached a DONE column, and `stage` says only whether the board shows it
   at all (`BACKLOG` / `ACTIVE` / `COMPLETED` / `BLOCKED` — see `TASK_STAGES`).
   So `stage = "COMPLETED"` is **not** `completed_at`: signing a task off leaves
-  that timestamp alone, and **no report may filter on `stage`**, or last
-  quarter's throughput would change because somebody tidied the board today.
+  that timestamp alone, and **no *historical* report may filter on `stage`**, or
+  last quarter's throughput would change because somebody tidied the board
+  today. `getThroughput` and `getBurndown` therefore never mention it. The
+  exception proves the rule: `getWorkload` **does** filter `stage: "ACTIVE"`,
+  because it is a snapshot of what people are carrying *now* rather than a
+  series over past time — counting a backlog item against its assignee describes
+  a load that does not exist and that they cannot clear by doing anything.
   The board is `stage: "ACTIVE"` in `getBoard` **and** `getOverallBoard`; the
   backlog screen is `stage: "BACKLOG"`; everything else is reachable from the
   List tab's stage filter and nowhere else.
+- `getProjectSummary.completed_tasks` is **counted, not derived**. It used to be
+  `total - open_tasks`, which is only right while "not open" and "completed"
+  mean the same thing — and they stopped meaning the same thing the moment a
+  task could sit in the backlog, at which point the subtraction reported every
+  unstarted task as finished. `backlog_tasks` is reported separately rather than
+  folded into `open_tasks`, for the same reason.
 - The gate is why `assertWipAllows` counts `stage: "ACTIVE"` as well as
   `deleted_at: null`. Counting signed-off tasks would let a Done column fill to
   its limit permanently and then refuse every future move into it — a limit

@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/table";
 import { api, buildQuery } from "@/lib/api-client";
 import { TASK_PRIORITIES, TASK_STAGES, TASK_TYPES } from "@/lib/constants";
+import { useDebounced } from "@/lib/use-debounced";
 import { cn } from "@/lib/utils";
 
 import { useProject } from "../board/board.api";
@@ -61,13 +62,16 @@ export function TaskListView({ projectId }: { projectId: string }) {
   const [openOnly, setOpenOnly] = useState(false);
   const [page, setPage] = useState(1);
 
+  // The box updates as they type; the query waits until they stop.
+  const debouncedSearch = useDebounced(search);
+
   const { data: project } = useProject(projectId);
 
   const { data, isLoading, isFetching } = useQuery({
     queryKey: [
       "task-list",
       projectId,
-      search,
+      debouncedSearch,
       statusId,
       type,
       priority,
@@ -79,7 +83,7 @@ export function TaskListView({ projectId }: { projectId: string }) {
       api.getPaged<TaskCard[]>(
         `${URL_TASKS}${buildQuery({
           projectId,
-          q: search || undefined,
+          q: debouncedSearch || undefined,
           statusId: statusId === "all" ? undefined : statusId,
           type: type === "all" ? undefined : type,
           priority: priority === "all" ? undefined : priority,

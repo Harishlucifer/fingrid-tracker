@@ -5,11 +5,8 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { EmptyState } from "@/components/empty-state";
-import {
-  DueDate,
-  PriorityBadge,
-  formatMinutes,
-} from "@/components/task-meta";
+import { Pager } from "@/components/pager";
+import { DueDate, PriorityBadge, formatMinutes } from "@/components/task-meta";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -58,7 +55,12 @@ export function BacklogView({
   projectId: string;
   canEdit: boolean;
 }) {
-  const { data: backlog, isLoading } = useBacklog(projectId);
+  const [backlogPage, setBacklogPage] = useState(1);
+  const {
+    data: backlog,
+    isLoading,
+    isFetching: backlogFetching,
+  } = useBacklog(projectId, backlogPage);
   const { data: sprints } = useProjectSprints(projectId);
   const assignSprint = useAssignSprint(projectId);
   const setStage = useSetTaskStage(projectId);
@@ -99,6 +101,9 @@ export function BacklogView({
           </CardTitle>
           <CardDescription>
             Not on the board yet · {formatMinutes(backlogEstimate)} estimated
+            {backlog && backlog.meta.total > backlogTasks.length
+              ? ` on this page of ${backlog.meta.total}`
+              : ""}
           </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
@@ -167,6 +172,15 @@ export function BacklogView({
                 />
               ))}
             </ul>
+          )}
+          {backlog && (
+            <div className="px-4 pb-4">
+              <Pager
+                meta={backlog.meta}
+                disabled={backlogFetching}
+                onPageChange={setBacklogPage}
+              />
+            </div>
           )}
         </CardContent>
       </Card>
@@ -244,7 +258,10 @@ export function BacklogView({
                         className="text-muted-foreground shrink-0"
                         disabled={assignSprint.isPending}
                         onClick={() =>
-                          assignSprint.mutate({ taskId: task.id, sprintId: null })
+                          assignSprint.mutate({
+                            taskId: task.id,
+                            sprintId: null,
+                          })
                         }
                         title="Return to backlog"
                       >
@@ -311,11 +328,7 @@ function TaskRow({
       </div>
 
       {task.assignee && (
-        <UserAvatar
-          user={task.assignee}
-          size="xs"
-          className="shrink-0"
-        />
+        <UserAvatar user={task.assignee} size="xs" className="shrink-0" />
       )}
       {action}
     </li>

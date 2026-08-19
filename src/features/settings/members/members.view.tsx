@@ -3,6 +3,8 @@
 import { KeyRound, Search, Users } from "lucide-react";
 import { useState } from "react";
 
+import { Pager } from "@/components/pager";
+
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -37,7 +39,8 @@ import { useMembers, useUpdateMember } from "./members.api";
 
 export function MembersView({ currentUserId }: { currentUserId: string }) {
   const [search, setSearch] = useState("");
-  const { data, isLoading } = useMembers(search);
+  const [page, setPage] = useState(1);
+  const { data, isLoading, isFetching } = useMembers(search, page);
   const updateMember = useUpdateMember();
 
   const members = data?.data ?? [];
@@ -66,7 +69,12 @@ export function MembersView({ currentUserId }: { currentUserId: string }) {
             <Search className="text-muted-foreground absolute top-2.5 left-2.5 size-4" />
             <Input
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                // Back to page one, or narrowing the list while on page five
+                // shows an empty table and reads as "no matches".
+                setPage(1);
+              }}
               placeholder="Search name or email"
               className="pl-8"
             />
@@ -207,6 +215,15 @@ export function MembersView({ currentUserId }: { currentUserId: string }) {
                 You cannot deactivate your own account, and the last active admin
                 cannot be demoted or disabled.
               </p>
+              {data && (
+                <div className="mt-4">
+                  <Pager
+                    meta={data.meta}
+                    disabled={isFetching}
+                    onPageChange={setPage}
+                  />
+                </div>
+              )}
             </div>
           )}
         </CardContent>

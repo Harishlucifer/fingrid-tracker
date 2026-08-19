@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
+
+import { Pager } from "@/components/pager";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
@@ -55,7 +57,8 @@ const formSchema = z.object({
 type FormValues = z.infer<typeof formSchema>;
 
 export function ProjectsListView({ canCreate }: { canCreate: boolean }) {
-  const { data, isLoading } = useProjects();
+  const [page, setPage] = useState(1);
+  const { data, isLoading, isFetching } = useProjects(page);
   const projects = data?.data ?? [];
   const activeProjects = projects.filter(
     (project) => project.status === "ACTIVE",
@@ -171,10 +174,13 @@ export function ProjectsListView({ canCreate }: { canCreate: boolean }) {
             ))}
           </div>
 
-          <p className="text-muted-foreground text-center text-xs">
-            Showing {projects.length} of {data?.meta.total ?? projects.length}{" "}
-            projects you can access
-          </p>
+          {data && (
+            <Pager
+              meta={data.meta}
+              disabled={isFetching}
+              onPageChange={setPage}
+            />
+          )}
         </section>
       )}
     </div>

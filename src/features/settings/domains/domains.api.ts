@@ -9,6 +9,7 @@
  */
 
 import {
+  keepPreviousData,
   useMutation,
   useQuery,
   useQueryClient,
@@ -33,6 +34,8 @@ export function useAllowedDomains(
 ): UseQueryResult<Paged<AllowedDomain[]>> {
   return useQuery({
     queryKey: domainsKey(page),
+    // Paging otherwise blanks the list: each page is its own cache key.
+    placeholderData: keepPreviousData,
     queryFn: () =>
       api.getPaged<AllowedDomain[]>(
         `${URL_ALLOWED_DOMAINS}${buildQuery({ page, per_page: 50 })}`,

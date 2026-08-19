@@ -1,6 +1,11 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { api, buildQuery } from "@/lib/api-client";
@@ -12,6 +17,8 @@ const URL_PROJECTS = "/api/v1/projects";
 export function useProjects(page = 1) {
   return useQuery({
     queryKey: ["projects", page] as const,
+    // Paging otherwise blanks the list: each page is its own cache key.
+    placeholderData: keepPreviousData,
     queryFn: () =>
       api.getPaged<ProjectListItem[]>(
         `${URL_PROJECTS}${buildQuery({ page, per_page: 50 })}`,

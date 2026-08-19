@@ -383,7 +383,10 @@ export async function createTask(
         estimateMin: input.estimateMin ?? null,
         position: nextPosition(last?.position ?? null),
         // A task created directly into a DONE column is complete on arrival.
-        completedAt: status.category === "DONE" ? new Date() : null,
+        // Through the shared helper rather than inline: this was the one write
+        // path of six that restated the rule, so a change to what completion
+        // means would have silently missed it.
+        completedAt: resolveCompletedAt(status.category, null),
       },
       select: { id: true, number: true },
     });
@@ -983,12 +986,9 @@ export async function getOverallBoard(
   const scope = await visibleProjectIds(ctx);
   if (scope !== "ALL" && scope.length === 0) {
     return {
-      columns: STATUS_CATEGORIES.map((category) => ({
-        category,
-        tasks: [],
-        total: 0,
-      })),
+      columns: STATUS_CATEGORIES.map((category) => ({ category, tasks: [] })),
       projects: [],
+      total: 0,
       truncated: false,
     };
   }
@@ -1045,12 +1045,24 @@ export async function getOverallBoard(
   }
 
   return {
+    // No per-column count here. There used to be a `total`, but it was the
+    // length of the bucket AFTER the cap — the number of cards on screen,
+    // wearing the name of the number of cards there are — so it understated
+    // every column the moment truncation kicked in, and the client maintained
+    // it by assigning `tasks.length` anyway. `tasks.length` says that honestly.
+    //
+    // A TRUE per-category count is possible but not cheap: `category` lives on
+    // `task_status`, so it needs a groupBy over every task in every visible
+    // project plus a status map — the scan this board's cap exists to avoid.
+    // The whole-board total below is the honest number that costs nothing
+    // extra, because the count was already being taken for `truncated`.
     columns: STATUS_CATEGORIES.map((category) => ({
       category,
       tasks: byCategory.get(category) ?? [],
-      total: byCategory.get(category)?.length ?? 0,
     })),
     projects,
+    /** Live tasks matching the filters, sent or not. */
+    total,
     /** True when the card limit clipped the result — the UI says so explicitly. */
     truncated: total > CARD_LIMIT,
   };
@@ -1170,6 +1182,12 @@ async function assertWipAllows(
 
   const occupancy = await db.task.count({
     where: {
+      // `projectId` is redundant for correctness — `statusId` already belongs to
+      // exactly one project — but not for the query plan. Without it there is no
+      // index whose leading column matches, so this falls back to the FK index
+      // on `status_id` alone; with it, `ix_task_board` and `ix_task_stage` both
+      // become usable. This runs on all four paths that place a task.
+      projectId,
       statusId,
       // Only work on the board occupies the board's capacity. Counting
       // signed-off tasks here would let a Done column fill up permanently and
